@@ -708,7 +708,7 @@
                         var idx = splits[0].Length;
                         for (var i = idx; i < line.Length; i++)
                         {
-                            if (!char.IsWhiteSpace(line[idx]))
+                            if (!char.IsWhiteSpace(line[i]))
                             {
                                 idx = i;
                                 break;
