@@ -30,15 +30,9 @@ namespace mcnntp.client
                 Console.WriteLine($"Server date: {date.DateTime}");
 
                 var newsgroups = client.GetNewsgroupsListAsync(cts.Token).Result;
-
                 Console.WriteLine($"\r\nGroups count={newsgroups.Count}");
                 foreach (var ng in newsgroups)
                     Console.WriteLine($"\t{ng}");
-
-                var newGroups = client.NewGroupsAsync(DateTime.Now.AddYears(-30), cts.Token).Result;
-                Console.WriteLine($"\r\nChecking for new groups in the past 30 years...");
-                foreach (var ng in newGroups.Groups)
-                    Console.WriteLine($"\t{ng.Group} {ng.LowWatermark}-{ng.HighWatermark} {ng.Status}");
 
                 Console.WriteLine($"\r\nRetrieving news...");
                 foreach (var ng in newsgroups)
@@ -81,13 +75,35 @@ namespace mcnntp.client
                             Console.WriteLine($"\t\t\t\tArticle-Num={messageId} ~= Article-Current={messageIdCurrent} ~= Stat={stat.MessageId}");
                         }
 
-                        // Test some other commands
+                        // Test some other commands for groups
                         var next = client.LastAsync(cts.Token).Result;
                         Console.WriteLine($"\t\tNEXT ({next.Code}) article={next.ArticleNumber}, messageId={next.MessageId}");
 
                         var last = client.LastAsync(cts.Token).Result;
                         Console.WriteLine($"\t\tLAST ({last.Code}) article={last.ArticleNumber}, messageId={last.MessageId}");
                     }
+                }
+
+                // Test some other commands globally
+                {
+                    var newGroups = client.NewGroupsAsync(DateTime.Now.AddYears(-30), cts.Token).Result;
+                    Console.WriteLine($"\r\nChecking for new groups in the past 30 years...");
+                    foreach (var ng in newGroups.Groups.Take(20))
+                        Console.WriteLine($"\t{ng.Group} {ng.LowWatermark}-{ng.HighWatermark} {ng.Status}");
+
+                    var newNews = client.NewNewsAsync("*", DateTime.Now.AddYears(-30), cts.Token).Result;
+                    Console.WriteLine($"\r\nChecking for new messages in the past 30 years...");
+                    foreach (var msg in newNews.MessageIds.Take(20))
+                        Console.WriteLine($"\t{msg}");
+
+                    var activeGroups = client.ListActiveAsync(cts.Token).Result;
+                    Console.WriteLine($"\r\nLIST ACTIVE Groups count={activeGroups.Groups.Count}");
+
+                    var activeTimesGroups = client.ListActiveTimesAsync(cts.Token).Result;
+                    Console.WriteLine($"\r\nLIST ACTIVE.TIMES Groups count={activeGroups.Groups.Count}");
+
+                    var newsgroupsList = client.ListNewsgroupsAsync(cts.Token).Result;
+                    Console.WriteLine($"\r\nLIST NEWSGROUPS Groups count={newsgroupsList.Groups.Count}");
                 }
             }
             catch (ArgumentException aex)

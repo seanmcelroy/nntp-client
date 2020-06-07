@@ -536,16 +536,16 @@
         public async Task<ReadOnlyCollection<OverResponse>> OverAsync(int low, int high, CancellationToken cancellationToken = default(CancellationToken))
         {
             await this.Connection.SendAsync(cancellationToken, $"OVER {low}-{high}\r\n");
-            var response2 = await this.Connection.ReceiveMultilineAsync();
-            if (response2.Code != 224)
-                throw new NntpException(response2.Message);
+            var response = await this.Connection.ReceiveMultilineAsync();
+            if (response.Code != 224)
+                throw new NntpException(response.Message);
 
             var ret = new List<OverResponse>();
 
-            foreach (var line in response2.Lines)
+            foreach (var line in response.Lines)
             {
                 var parts = line.Split('\t');
-                ret.Add(new OverResponse(response2.Code, response2.Message)
+                ret.Add(new OverResponse(response.Code, response.Message)
                 {
                     ArticleNumber = int.Parse(parts[0]),
                     Subject = parts[1],
@@ -597,18 +597,56 @@
             await this.Connection.SendAsync(cancellationToken, $"NEWGROUPS {date} {time} GMT\r\n");
             var response = await this.Connection.ReceiveMultilineAsync();
 
-            var values = response.Message.Split(separators);
+            switch (response.Code)
+            {
+                case 231: // List of new newsgroups follows (multi-line)
+                    return ParseGroupsListResponse(response);
+                default:
+                    return new GroupsListResponse(response.Code, response.Message, null);
+            }
+        }
 
-            var newGroups = new List<GroupsListResponse.GroupEntry>();
+        public async Task<NewNewsResponse> NewNewsAsync(string wildmat, DateTime since, CancellationToken cancellationToken = default(CancellationToken))
+        {
+            var date = since.ToUniversalTime().ToString("yyyyMMdd");
+            var time = since.ToUniversalTime().ToString("HHmmss");
+
+            await this.Connection.SendAsync(cancellationToken, $"NEWNEWS {wildmat} {date} {time} GMT\r\n");
+            var response = await this.Connection.ReceiveMultilineAsync();
+
+            return new NewNewsResponse(response.Code, response.Message, response.Lines);
+        }
+
+        public async Task<GroupsListResponse> ListAsync(string keyword = "ACTIVE", string wildmatOrArgument = null, CancellationToken cancellationToken = default(CancellationToken))
+        {
+            await this.Connection.SendAsync(cancellationToken, $"LIST {keyword}{(string.IsNullOrWhiteSpace(wildmatOrArgument) ? string.Empty : $" {wildmatOrArgument}")}\r\n");
+            var response = await this.Connection.ReceiveMultilineAsync();
+
+            switch (response.Code)
+            {
+                case 215: // Information follows (multi-line)
+                    return ParseGroupsListResponse(response);
+                default:
+                    return new GroupsListResponse(response.Code, response.Message, null);
+            }
+        }
+
+        public async Task<GroupsListResponse> ListActiveAsync(CancellationToken cancellationToken = default(CancellationToken)) => await ListAsync("ACTIVE", null, cancellationToken);
+
+        private static GroupsListResponse ParseGroupsListResponse(NntpMultilineResponse response)
+        {
+            var groups = new List<GroupsListResponse.GroupEntry>();
             foreach (var line in response.Lines)
             {
+                var values = line.Split(separators);
+
                 if (!int.TryParse(values[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out int high))
                     throw new InvalidOperationException($"Cannot parse {values[1]} to an integer for 'high'");
 
                 if (!int.TryParse(values[2], NumberStyles.Integer, CultureInfo.InvariantCulture, out int low))
                     throw new InvalidOperationException($"Cannot parse {values[2]} to an integer for 'low'");
 
-                newGroups.Add(new GroupsListResponse.GroupEntry
+                groups.Add(new GroupsListResponse.GroupEntry
                 {
                     Group = values[0],
                     HighWatermark = high,
@@ -617,7 +655,80 @@
                 });
             }
 
-            return new GroupsListResponse(response.Code, response.Message, newGroups.AsReadOnly());
+            return new GroupsListResponse(response.Code, response.Message, groups.AsReadOnly());
         }
+
+        public async Task<GroupsListTimesResponse> ListActiveTimesAsync(CancellationToken cancellationToken = default(CancellationToken)) => await ListActiveTimesAsync(null, cancellationToken);
+
+        public async Task<GroupsListTimesResponse> ListActiveTimesAsync(string wildmatOrArgument, CancellationToken cancellationToken = default(CancellationToken))
+        {
+            await this.Connection.SendAsync(cancellationToken, $"LIST ACTIVE.TIMES{(string.IsNullOrWhiteSpace(wildmatOrArgument) ? string.Empty : $" {wildmatOrArgument}")}\r\n");
+            var response = await this.Connection.ReceiveMultilineAsync();
+
+            switch (response.Code)
+            {
+                case 215: // Information follows (multi-line)
+
+                    var values = response.Message.Split(separators);
+
+                    var groups = new List<GroupsListTimesResponse.GroupTimeEntry>();
+                    foreach (var line in response.Lines)
+                    {
+                        if (!int.TryParse(values[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out int seconds))
+                            throw new InvalidOperationException($"Cannot parse {values[1]} to an integer for 'seconds'");
+
+                        groups.Add(new GroupsListTimesResponse.GroupTimeEntry
+                        {
+                            Group = values[0],
+                            EpochSeconds = seconds,
+                            Creator = values[2]
+                        });
+                    }
+
+                    return new GroupsListTimesResponse(response.Code, response.Message, groups.AsReadOnly());
+                default:
+                    return new GroupsListTimesResponse(response.Code, response.Message, null);
+            }
+        }
+
+        public async Task<NewsgroupsListResponse> ListNewsgroupsAsync(CancellationToken cancellationToken = default(CancellationToken))
+        {
+            await this.Connection.SendAsync(cancellationToken, $"LIST NEWSGROUPS\r\n");
+            var response = await this.Connection.ReceiveMultilineAsync();
+
+            switch (response.Code)
+            {
+                case 215: // Information follows (multi-line)
+                    var groups = new List<NewsgroupsListResponse.GroupEntry>();
+                    foreach (var line in response.Lines)
+                    {
+                        var splits = line.Split(' ', '\t');
+                        var newsgroup = splits[0];
+
+                        var idx = splits[0].Length;
+                        for (var i = idx; i < line.Length; i++)
+                        {
+                            if (!char.IsWhiteSpace(line[idx]))
+                            {
+                                idx = i;
+                                break;
+                            }
+                        }
+
+                        var creator = line.Substring(idx);
+
+                        groups.Add(new NewsgroupsListResponse.GroupEntry
+                        {
+                            Group = newsgroup,
+                            Description = creator
+                        });
+                    }
+
+                    return new NewsgroupsListResponse(response.Code, response.Message, groups.AsReadOnly());
+                default:
+                    return new NewsgroupsListResponse(response.Code, response.Message, null);
+            }
+        }
+
     }
 }
