@@ -95,6 +95,34 @@
         }
         #endregion
 
+        public async Task<bool> AuthenticateAsync(string username, string password, CancellationToken cancellationToken = default)
+        {
+            await this.Connection.SendAsync(cancellationToken, $"AUTHINFO USER {username}\r\n");
+            var response = await this.Connection.ReceiveAsync();
+
+            switch (response.Code)
+            {
+                case 281: // Authentication accepted (password not required)
+                    break;
+
+                case 381: // Password required
+                    await this.Connection.SendAsync(cancellationToken, $"AUTHINFO PASS {password}\r\n");
+                    response = await this.Connection.ReceiveAsync();
+                    if (response.Code != 281)  // Authentication accepted
+                    {
+                        throw new NntpException(response.Message);
+                    }
+                    break;
+
+                case 481: // Authentication failed/rejected
+                case 482: // Authentication commands issued out of sequence
+                case 502: // Command unavailable
+                default:
+                    throw new NntpException(response.Message);
+            }
+
+            return true;
+        }
         public async Task<ReadOnlyCollection<string>> GetCapabilitiesAsync(CancellationToken cancellationToken = default(CancellationToken))
         {
             await this.Connection.SendAsync(cancellationToken, "CAPABILITIES\r\n");
