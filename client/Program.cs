@@ -26,11 +26,19 @@ namespace mcnntp.client
                 foreach (var cap in caps)
                     Console.WriteLine($"\t{cap}");
 
+                var date = client.DateAsync(cts.Token).Result;
+                Console.WriteLine($"Server date: {date.DateTime}");
+
                 var newsgroups = client.GetNewsgroupsListAsync(cts.Token).Result;
 
                 Console.WriteLine($"\r\nGroups count={newsgroups.Count}");
                 foreach (var ng in newsgroups)
                     Console.WriteLine($"\t{ng}");
+
+                var newGroups = client.NewGroupsAsync(DateTime.Now.AddYears(-30), cts.Token).Result;
+                Console.WriteLine($"\r\nChecking for new groups in the past 30 years...");
+                foreach (var ng in newGroups.Groups)
+                    Console.WriteLine($"\t{ng.Group} {ng.LowWatermark}-{ng.HighWatermark} {ng.Status}");
 
                 Console.WriteLine($"\r\nRetrieving news...");
                 foreach (var ng in newsgroups)
@@ -59,14 +67,18 @@ namespace mcnntp.client
                             var articleByNumber = client.ArticleAsync(over.ArticleNumber, cts.Token).Result;
                             Console.WriteLine($"\t\t\t({articleByNumber.Code}) ARTICLE:\r\n{articleByNumber.Lines.Take(50).Aggregate((c, n) => c + "\r\n\t\t\t" + n)}");
 
-                            var messageId = articleByNumber.GetHeaderValue("Message-ID");
+                            var headers = articleByNumber.GetHeaders();
+
+                            var messageId = articleByNumber.GetHeaderValues("Message-ID").FirstOrDefault();
 
                             var articleByMessageId = client.ArticleAsync(messageId, cts.Token).Result;
                             Console.WriteLine($"\t\t\t\t({articleByMessageId.Code}) ARTICLE: {articleByNumber.Lines.Take(5).Aggregate((c, n) => c + "\r\n\t\t\t" + n)}");
 
                             var articleCurrent = client.ArticleAsync(cts.Token).Result;
-                            var messageIdCurrent = articleCurrent.GetHeaderValue("Message-ID");
-                            Console.WriteLine($"\t\t\t\tArticle-Num={messageId} ~= Article-Current={messageIdCurrent}");
+                            var messageIdCurrent = articleCurrent.GetHeaderValues("Message-ID").FirstOrDefault();
+
+                            var stat = client.StatAsync(over.ArticleNumber, cts.Token).Result;
+                            Console.WriteLine($"\t\t\t\tArticle-Num={messageId} ~= Article-Current={messageIdCurrent} ~= Stat={stat.MessageId}");
                         }
 
                         // Test some other commands
@@ -80,7 +92,7 @@ namespace mcnntp.client
             }
             catch (ArgumentException aex)
             {
-                Console.Error.WriteLine($"Caught ArgumentException: {aex.Message}");
+                Console.Error.WriteLine($"Caught ArgumentException: {aex.Message}\r\n{aex}");
                 return;
             }
             catch (AggregateException agg)

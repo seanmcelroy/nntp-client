@@ -1,7 +1,8 @@
+using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
-using System;
+using System.Text;
 
 namespace mcnntp.common
 {
@@ -19,25 +20,16 @@ namespace mcnntp.common
             this.Lines = new ReadOnlyCollection<string>(lines.ToList());
         }
 
-        public string GetHeaderValue(string headerName)
+        public IEnumerable<KeyValuePair<string, string>> GetHeaders() => StringUtility.GetHeaders(this.Lines);
+
+        public IEnumerable<string> GetHeaderValues(string headerName)
         {
             if (this.Lines == null)
                 throw new InvalidOperationException("No lines are part of this response");
 
-            foreach (var line in Lines)
-            {
-                // Break between header and body
-                if (string.IsNullOrEmpty(line))
-                    return null;
-
-                if (line.StartsWith($"{headerName}: ", StringComparison.OrdinalIgnoreCase))
-                {
-                    var ret = line.Substring($"{headerName}: ".Length);
-                    return ret;
-                }
-            }
-
-            return null;
+            foreach (var kvp in GetHeaders())
+                if (string.Compare(kvp.Key, headerName, StringComparison.OrdinalIgnoreCase) == 0)
+                    yield return kvp.Value;
         }
     }
 }

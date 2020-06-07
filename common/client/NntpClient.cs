@@ -462,6 +462,77 @@
             }
         }
 
+        public async Task<PointerResponse> StatAsync(int articleNumber, CancellationToken cancellationToken = default(CancellationToken))
+        {
+            await this.Connection.SendAsync(cancellationToken, $"STAT {articleNumber}\r\n");
+            var response = await this.Connection.ReceiveAsync();
+
+            switch (response.Code)
+            {
+                case 223: // Article exists
+                    var values = response.Message.Split(separators);
+                    CurrentArticleNumber = articleNumber;
+                    return new PointerResponse(response.Code, response.Message, articleNumber, values[1]);
+                case 423: // No article with that number
+                    CurrentArticleNumber = null;
+                    return new PointerResponse(response.Code, response.Message, null, null);
+                case 412: // No newsgroup selected
+                default:
+                    CurrentNewsgroup = null;
+                    CurrentArticleNumber = null;
+                    return new PointerResponse(response.Code, response.Message, null, null);
+            }
+        }
+
+        public async Task<PointerResponse> StatAsync(string messageId, CancellationToken cancellationToken = default(CancellationToken))
+        {
+            await this.Connection.SendAsync(cancellationToken, $"STAT {messageId}\r\n");
+            var response = await this.Connection.ReceiveAsync();
+
+            switch (response.Code)
+            {
+                case 223: // Article exists
+                    var values = response.Message.Split(separators);
+                    if (!int.TryParse(values[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out int number))
+                        throw new InvalidOperationException($"Cannot parse {values[0]} to an integer for 'number'");
+
+                    if (number > 0)
+                        CurrentArticleNumber = number;
+                    return new PointerResponse(response.Code, response.Message, number, values[1]);
+                case 430: // No article with that message-id
+                default:
+                    CurrentArticleNumber = null;
+                    return new PointerResponse(response.Code, response.Message, null, null);
+            }
+        }
+
+        public async Task<PointerResponse> StatAsync(CancellationToken cancellationToken = default(CancellationToken))
+        {
+            // This form uses the server's notion of the "current" article number
+            await this.Connection.SendAsync(cancellationToken, $"STAT\r\n");
+            var response = await this.Connection.ReceiveAsync();
+
+            switch (response.Code)
+            {
+                case 223: // Article exists
+                    var values = response.Message.Split(separators);
+                    if (!int.TryParse(values[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out int number))
+                        throw new InvalidOperationException($"Cannot parse {values[0]} to an integer for 'number'");
+
+                    CurrentArticleNumber = number;
+                    return new PointerResponse(response.Code, response.Message, number, values[1]);
+
+                case 423: // Current article number is invalid
+                    CurrentArticleNumber = null;
+                    return new PointerResponse(response.Code, response.Message, null, null);
+                case 412: // No newsgroup selected
+                default:
+                    CurrentNewsgroup = null;
+                    CurrentArticleNumber = null;
+                    return new PointerResponse(response.Code, response.Message, null, null);
+            }
+        }
+
         public async Task<ReadOnlyCollection<OverResponse>> OverAsync(int low, int high, CancellationToken cancellationToken = default(CancellationToken))
         {
             await this.Connection.SendAsync(cancellationToken, $"OVER {low}-{high}\r\n");
@@ -501,6 +572,52 @@
             response = await this.Connection.ReceiveAsync();
             if (response.Code != 240)
                 throw new NntpException(response.Message);
+        }
+
+        public async Task<DateResponse> DateAsync(CancellationToken cancellationToken = default(CancellationToken))
+        {
+            await this.Connection.SendAsync(cancellationToken, "DATE\r\n");
+            var response = await this.Connection.ReceiveAsync();
+
+            const string pattern = "yyyyMMddHHmmss";
+            DateTime dt;
+            if (DateTime.TryParseExact(response.Message, pattern, CultureInfo.InvariantCulture,
+                                       DateTimeStyles.AssumeUniversal,
+                                       out dt))
+                return new DateResponse(response.Code, response.Message, dt);
+
+            return new DateResponse(response.Code, response.Message);
+        }
+
+        public async Task<GroupsListResponse> NewGroupsAsync(DateTime since, CancellationToken cancellationToken = default(CancellationToken))
+        {
+            var date = since.ToUniversalTime().ToString("yyyyMMdd");
+            var time = since.ToUniversalTime().ToString("HHmmss");
+
+            await this.Connection.SendAsync(cancellationToken, $"NEWGROUPS {date} {time} GMT\r\n");
+            var response = await this.Connection.ReceiveMultilineAsync();
+
+            var values = response.Message.Split(separators);
+
+            var newGroups = new List<GroupsListResponse.GroupEntry>();
+            foreach (var line in response.Lines)
+            {
+                if (!int.TryParse(values[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out int high))
+                    throw new InvalidOperationException($"Cannot parse {values[1]} to an integer for 'high'");
+
+                if (!int.TryParse(values[2], NumberStyles.Integer, CultureInfo.InvariantCulture, out int low))
+                    throw new InvalidOperationException($"Cannot parse {values[2]} to an integer for 'low'");
+
+                newGroups.Add(new GroupsListResponse.GroupEntry
+                {
+                    Group = values[0],
+                    HighWatermark = high,
+                    LowWatermark = low,
+                    Status = values[3][0]
+                });
+            }
+
+            return new GroupsListResponse(response.Code, response.Message, newGroups.AsReadOnly());
         }
     }
 }

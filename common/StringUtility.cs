@@ -244,5 +244,42 @@ namespace mcnntp.common
 
             return false;
         }
+
+        public static IEnumerable<KeyValuePair<string, string>> GetHeaders(IEnumerable<string> lines)
+        {
+            if (lines == null)
+                throw new InvalidOperationException("No lines are part of this response");
+
+            var ret = new List<KeyValuePair<string, string>>();
+
+            // Handle header unfolding
+            string key = null;
+            var sbValue = new StringBuilder();
+            foreach (var line in lines)
+            {
+                // Break between header and body
+                if (string.IsNullOrEmpty(line))
+                    yield break;
+
+                if (!string.IsNullOrEmpty(line) && (line.StartsWith(' ') || line.StartsWith('\t')))
+                {
+                    // Continued content (RFC 3977 8.3.2 on unfolding)
+                    sbValue.Append(line.Replace("\r\n", "").Replace("\t", " "));
+                    continue;
+                }
+
+                // Next line is here.  Add last (unwrapped) line.
+                if (key != null)
+                    yield return new KeyValuePair<string, string>(key, sbValue.ToString());
+                sbValue.Clear();
+                key = line.Substring(0, line.IndexOf(':'));
+
+                sbValue.Append(line.Substring(line.IndexOf(':') + 2));
+            }
+
+            // Yield the last one
+            if (key != null)
+                yield return new KeyValuePair<string, string>(key, sbValue.ToString());
+        }
     }
 }
