@@ -19,12 +19,21 @@ namespace mcnntp.client
             {
                 Console.WriteLine($"Connecting to {host}...");
                 var connectTask = client.ConnectAsync(host).Result;
+                if (connectTask.IsCommandError || connectTask.IsServerError)
+                {
+                    // Following a 400 or 502 response, the server MUST immediately close the connection.
+                    var quitAbortiveResult = client.DisconnectAsync().Result;
+                    Console.Out.WriteLine($"Closed connection: {quitAbortiveResult}");
+                    return;
+                }
                 Console.WriteLine($"Connected to {host}");
 
                 Console.WriteLine($"\r\nRetrieving server capabilities");
                 var caps = client.GetCapabilitiesAsync(cts.Token).Result;
                 foreach (var cap in caps)
                     Console.WriteLine($"\t{cap}");
+
+                var sasl = client.AuthenticateSaslPlainAsync("john", "doe", cts.Token).Result;
 
                 var date = client.DateAsync(cts.Token).Result;
                 Console.WriteLine($"Server date: {date.DateTime}");

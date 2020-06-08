@@ -54,7 +54,7 @@
         }
 
         #region Connections
-        public async Task<bool> ConnectAsync(string hostName, bool? tls = null)
+        public async Task<ConnectResponse> ConnectAsync(string hostName, bool? tls = null)
         {
             var tcpClient = new TcpClient();
             await tcpClient.ConnectAsync(hostName, this.Port);
@@ -75,12 +75,16 @@
 
             switch (response.Code)
             {
-                case 200:
+                case 200: // Service available, posting allowed
                     this.CanPost = true;
-                    return true;
-                case 201:
+                    return new ConnectResponse(response, true);
+                case 201: // Service available, posting prohibited
                     this.CanPost = false;
-                    return true;
+                    return new ConnectResponse(response, false);
+                case 400: // Service temporarily unavailable
+                case 502: // Service permanently unavailable
+                    // Following a 400 or 502 response, the server MUST immediately close the connection.
+                    return new ConnectResponse(response, false);
                 default:
                     throw new NntpException(string.Format("Unexpected response code {0}.  Message: {1}", response.Code, response.Message));
             }
@@ -95,40 +99,75 @@
         }
         #endregion
 
-        public async Task<bool> AuthenticateAsync(string username, string password, CancellationToken cancellationToken = default)
+        public async Task<bool> AuthenticateAsync(string username, string password, CancellationToken cancellationToken = default(CancellationToken)) {
+            var result = await AuthenticateUsernamePasswordAsync(username, password, cancellationToken);
+            return result.IsSuccessfullyComplete;
+        }
+
+        public async Task<AuthenticateResponse> AuthenticateUsernamePasswordAsync(string username, string password, CancellationToken cancellationToken = default(CancellationToken))
         {
             await this.Connection.SendAsync(cancellationToken, $"AUTHINFO USER {username}\r\n");
-            var response = await this.Connection.ReceiveAsync();
+            var responseUser = await this.Connection.ReceiveAsync();
 
-            switch (response.Code)
+            switch (responseUser.Code)
             {
                 case 281: // Authentication accepted (password not required)
-                    break;
+                    return new AuthenticateResponse(responseUser);
 
                 case 381: // Password required
                     await this.Connection.SendAsync(cancellationToken, $"AUTHINFO PASS {password}\r\n");
-                    response = await this.Connection.ReceiveAsync();
-                    if (response.Code != 281)  // Authentication accepted
+                    var responsePass = await this.Connection.ReceiveAsync();
+                    switch (responsePass.Code)
                     {
-                        throw new NntpException(response.Message);
+                        case 281: // Authentication accepted
+                        case 481: // Authentication failed/rejected
+                            return new AuthenticateResponse(responsePass);
+                        default:
+                            throw new NntpException(string.Format("Unexpected response code {0}.  Message: {1}", responsePass.Code, responsePass.Message));
                     }
-                    break;
-
                 case 481: // Authentication failed/rejected
                 case 482: // Authentication commands issued out of sequence
                 case 502: // Command unavailable
+                    return new AuthenticateResponse(responseUser);
                 default:
-                    throw new NntpException(response.Message);
+                    throw new NntpException(string.Format("Unexpected response code {0}.  Message: {1}", responseUser.Code, responseUser.Message));
             }
-
-            return true;
         }
+
+        public async Task<AuthenticateResponse> AuthenticateSaslPlainAsync(string username, string password, CancellationToken cancellationToken = default(CancellationToken))
+        {
+            const string authzid = "nntp";
+            if (username != null && username.IndexOf('\0') > -1)
+                throw new ArgumentException("A NUL character is not permitted", nameof(username));
+            if (password != null && password.IndexOf('\0') > -1)
+                throw new ArgumentException("A NUL character is not permitted", nameof(password));
+
+            var message = $"{authzid}\0{username}\0{password}";
+            var enc = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(message));
+            await this.Connection.SendAsync(cancellationToken, $"AUTHINFO SASL PLAIN {enc}\r\n");
+            var responseSasl = await this.Connection.ReceiveAsync();
+
+            switch (responseSasl.Code)
+            {
+                case 281: // Authentication accepted
+                    return new AuthenticateResponse(responseSasl);
+
+                case 481: // Authentication failed/rejected
+                case 482: // SASL protocol error
+                case 483: // The client must negotiate appropriate privacy protection on the connection.
+                case 502: // Command unavailable
+                    return new AuthenticateResponse(responseSasl);
+                default:
+                    throw new NntpException(string.Format("Unexpected response code {0}.  Message: {1}", responseSasl.Code, responseSasl.Message));
+            }
+        }
+
         public async Task<ReadOnlyCollection<string>> GetCapabilitiesAsync(CancellationToken cancellationToken = default(CancellationToken))
         {
             await this.Connection.SendAsync(cancellationToken, "CAPABILITIES\r\n");
             var response = await this.Connection.ReceiveMultilineAsync();
             if (response.Code != 101)
-                throw new NntpException(response.Message);
+                throw new NntpException(string.Format("Unexpected response code {0}.  Message: {1}", response.Code, response.Message));
 
             this.Capabilities = response.Lines;
             return response.Lines;
@@ -139,7 +178,7 @@
             await this.Connection.SendAsync(cancellationToken, "LIST\r\n");
             var response = await this.Connection.ReceiveMultilineAsync();
             if (response.Code != 215)
-                throw new NntpException(response.Message);
+                throw new NntpException(string.Format("Unexpected response code {0}.  Message: {1}", response.Code, response.Message));
 
             var retval = response.Lines.Select(line => line.Split(' ')).Select(values => values[0]).ToList();
 
@@ -154,7 +193,7 @@
             await this.Connection.SendAsync(cancellationToken, "GROUP {0}\r\n", newsgroup);
             var response = await this.Connection.ReceiveAsync();
             if (response.Code != 211)
-                throw new NntpException(response.Message);
+                throw new NntpException(string.Format("Unexpected response code {0}.  Message: {1}", response.Code, response.Message));
 
             CurrentNewsgroup = newsgroup;
 
@@ -191,7 +230,7 @@
             await this.Connection.SendAsync(cancellationToken, $"LISTGROUP {newsgroup} {rangeArgument}\r\n");
             var response = await this.Connection.ReceiveMultilineAsync();
             if (response.Code != 211)
-                throw new NntpException(response.Message);
+                throw new NntpException(string.Format("Unexpected response code {0}.  Message: {1}", response.Code, response.Message));
 
             CurrentNewsgroup = newsgroup;
 
@@ -566,7 +605,7 @@
             await this.Connection.SendAsync(cancellationToken, $"OVER {low}-{high}\r\n");
             var response = await this.Connection.ReceiveMultilineAsync();
             if (response.Code != 224)
-                throw new NntpException(response.Message);
+                throw new NntpException(string.Format("Unexpected response code {0}.  Message: {1}", response.Code, response.Message));
 
             var ret = new List<OverResponse>();
 
@@ -594,12 +633,12 @@
             await this.Connection.SendAsync(cancellationToken, "POST\r\n");
             var response = await this.Connection.ReceiveAsync();
             if (response.Code != 340)
-                throw new NntpException(response.Message);
+                throw new NntpException(string.Format("Unexpected response code {0}.  Message: {1}", response.Code, response.Message));
 
             await this.Connection.SendAsync(cancellationToken, "From: {0}\r\nNewsgroups: {1}\r\nSubject: {2}\r\n\r\n{3}\r\n.\r\n", from, newsgroup, subject, content);
             response = await this.Connection.ReceiveAsync();
             if (response.Code != 240)
-                throw new NntpException(response.Message);
+                throw new NntpException(string.Format("Unexpected response code {0}.  Message: {1}", response.Code, response.Message));
         }
 
         public async Task<DateResponse> DateAsync(CancellationToken cancellationToken = default(CancellationToken))
