@@ -600,9 +600,11 @@
             }
         }
 
-        public async Task<ReadOnlyCollection<OverResponse>> OverAsync(int low, int high, CancellationToken cancellationToken = default(CancellationToken))
+        private async Task<ReadOnlyCollection<OverResponse>> OverAsync(bool isXover, int low, int high, CancellationToken cancellationToken = default(CancellationToken))
         {
-            await this.Connection.SendAsync(cancellationToken, $"OVER {low}-{high}\r\n");
+            string command = isXover ? "XOVER" : "OVER";
+
+            await this.Connection.SendAsync(cancellationToken, $"{command} {low}-{high}\r\n");
             var response = await this.Connection.ReceiveMultilineAsync();
             if (response.Code != 224)
                 throw new NntpException(string.Format("Unexpected response code {0}.  Message: {1}", response.Code, response.Message));
@@ -626,6 +628,16 @@
             }
 
             return new ReadOnlyCollection<OverResponse>(ret);
+        }
+
+        public async Task<ReadOnlyCollection<OverResponse>> OverAsync(int low, int high, CancellationToken cancellationToken = default(CancellationToken))
+        {
+            return await this.OverAsync(false, low, high, cancellationToken);
+        }
+
+        public async Task<ReadOnlyCollection<OverResponse>> XOverAsync(int low, int high, CancellationToken cancellationToken = default(CancellationToken))
+        {
+            return await this.OverAsync(true, low, high, cancellationToken);
         }
 
         public async Task PostAsync(string newsgroup, string subject, string from, string content, CancellationToken cancellationToken = default(CancellationToken))
