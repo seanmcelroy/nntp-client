@@ -709,7 +709,6 @@
             return new ReadOnlyCollection<OverResponse>(ret);
         }
 
-
         public async Task PostAsync(string newsgroup, string subject, string from, string content, CancellationToken cancellationToken = default(CancellationToken))
         {
             if (this.Connection == null)
