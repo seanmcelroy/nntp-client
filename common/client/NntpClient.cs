@@ -671,16 +671,28 @@
             if (this.Connection == null)
                 throw new InvalidOperationException("Cannot send OVER command when there is no connection to the server");
 
-            string verb;
+            if (this.Capabilities != null && this.Capabilities.Any(c => string.Compare(c, "XOVER", StringComparison.OrdinalIgnoreCase) == 0))
+                return await OverAsyncInternal(true, low, high, cancellationToken);
 
-            if (this.Capabilities == null || this.Capabilities.Any(c => string.Compare(c, "OVER", StringComparison.OrdinalIgnoreCase) == 0))
-                verb = "OVER";
-            else if (this.Capabilities != null && this.Capabilities.Any(c => string.Compare(c, "XOVER", StringComparison.OrdinalIgnoreCase) == 0))
-                verb = "XOVER";
-            else
-                throw new InvalidOperationException("Server does not support OVER or XOVER capability");
+            return await OverAsyncInternal(false, low, high, cancellationToken);
+        }
 
-            await this.Connection.SendAsync(cancellationToken, $"{verb} {low}-{high}\r\n");
+        public async Task<ReadOnlyCollection<OverResponse>> XOverAsync(int low, int high, CancellationToken cancellationToken = default(CancellationToken))
+        {
+            if (this.Connection == null)
+                throw new InvalidOperationException("Cannot send XOVER command when there is no connection to the server");
+
+            return await OverAsyncInternal(true, low, high, cancellationToken);
+        }
+
+        private async Task<ReadOnlyCollection<OverResponse>> OverAsyncInternal(bool isXOver, int low, int high, CancellationToken cancellationToken = default(CancellationToken))
+        {
+            if (this.Connection == null)
+                throw new InvalidOperationException("Cannot send OVER command when there is no connection to the server");
+
+            string command = isXOver ? "XOVER" : "OVER";
+
+            await this.Connection.SendAsync(cancellationToken, $"{command} {low}-{high}\r\n");
             var response = await this.Connection.ReceiveMultilineAsync();
             if (response.Code != 224)
                 throw new NntpException(string.Format("Unexpected response code {0}.  Message: {1}", response.Code, response.Message));
@@ -696,6 +708,7 @@
 
             return new ReadOnlyCollection<OverResponse>(ret);
         }
+
 
         public async Task PostAsync(string newsgroup, string subject, string from, string content, CancellationToken cancellationToken = default(CancellationToken))
         {
