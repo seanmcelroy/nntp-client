@@ -44,7 +44,8 @@ namespace mcnntp.common
             using (var gzs = new Ionic.Zlib.ZlibStream(ms, Ionic.Zlib.CompressionMode.Compress, true))
             using (var output = new MemoryStream())
             {
-                await gzs.CopyToAsync(output, cancellationToken);
+                // Buffer size is default for underlying Stream.CopyToAsync()
+                await gzs.CopyToAsync(output, 81920, cancellationToken);
                 var array = output.ToArray();
                 return array;
             }
@@ -69,7 +70,8 @@ namespace mcnntp.common
             using (var gzs = new Ionic.Zlib.ZlibStream(ms, Ionic.Zlib.CompressionMode.Decompress, true))
             using (var output = new MemoryStream())
             {
-                await gzs.CopyToAsync(output, cancellationToken);
+                // Buffer size is default for underlying Stream.CopyToAsync()
+                await gzs.CopyToAsync(output, 81920, cancellationToken);
                 var array = output.ToArray();
                 var str = Encoding.UTF8.GetString(array);
                 return str;
@@ -253,7 +255,7 @@ namespace mcnntp.common
             var ret = new List<KeyValuePair<string, string>>();
 
             // Handle header unfolding
-            string key = null;
+            string? key = null;
             var sbValue = new StringBuilder();
             foreach (var line in lines)
             {
@@ -261,7 +263,7 @@ namespace mcnntp.common
                 if (string.IsNullOrEmpty(line))
                     yield break;
 
-                if (!string.IsNullOrEmpty(line) && (line.StartsWith(' ') || line.StartsWith('\t')))
+                if (!string.IsNullOrEmpty(line) && (line[0] == ' ' || line[0] == '\t'))
                 {
                     // Continued content (RFC 3977 8.3.2 on unfolding)
                     sbValue.Append(line.Replace("\r\n", "").Replace("\t", " "));

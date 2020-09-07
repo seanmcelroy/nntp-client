@@ -8,9 +8,9 @@ namespace mcnntp.common
         public int EstimatedArticleCount { get; set; }
         public int LowWatermark { get; set; }
         public int HighWatermark { get; set; }
-        public ReadOnlyCollection<int> ArticleNumbers {get;set;}
+        public ReadOnlyCollection<int> ArticleNumbers { get; set; }
 
-        public GroupListResponse(int code, string message, string groupName, int estimatedArticleCount, int lowWatermark, int highWatermark, ReadOnlyCollection<int> articleNumbers) : base(code, message)
+        public GroupListResponse(int code, string? message, string groupName, int estimatedArticleCount, int lowWatermark, int highWatermark, ReadOnlyCollection<int> articleNumbers) : base(code, message)
         {
             this.GroupName = groupName;
             this.EstimatedArticleCount = estimatedArticleCount;

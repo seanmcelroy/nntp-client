@@ -18,7 +18,7 @@
 
         public bool CanPost { get; private set; }
 
-        private Connection Connection { get; set; }
+        private Connection? Connection { get; set; } = null;
 
         public int Port { get; set; }
 
@@ -28,7 +28,7 @@
         /// call.  If no capabilities, this will be an empty collection.
         /// If capabilities have not been queried, this will be null.
         /// </summary>
-        public ReadOnlyCollection<string> Capabilities { get; private set; } = null;
+        public ReadOnlyCollection<string>? Capabilities { get; private set; } = null;
 
         // Whether MODE READER has been issued.
         public bool ModeReaderIssued = false;
@@ -36,7 +36,7 @@
         /// <summary>
         /// Gets the newsgroup currently selected by this connection
         /// </summary>
-        public string CurrentNewsgroup { get; private set; }
+        public string? CurrentNewsgroup { get; private set; } = null;
 
         /// <summary>
         /// Gets the article number currently selected by this connection for the selected newsgroup
@@ -90,8 +90,10 @@
             }
         }
 
-        public async Task<NntpResponse> DisconnectAsync(CancellationToken cancellationToken = default(CancellationToken))
+        public async Task<NntpResponse?> DisconnectAsync(CancellationToken cancellationToken = default(CancellationToken))
         {
+            if (this.Connection == null)
+                return null;
             await this.Connection.SendAsync(cancellationToken, "QUIT\r\n");
             var response = await this.Connection.ReceiveAsync();
             this.Connection.Close();
@@ -99,13 +101,17 @@
         }
         #endregion
 
-        public async Task<bool> AuthenticateAsync(string username, string password, CancellationToken cancellationToken = default(CancellationToken)) {
+        public async Task<bool> AuthenticateAsync(string username, string password, CancellationToken cancellationToken = default(CancellationToken))
+        {
             var result = await AuthenticateUsernamePasswordAsync(username, password, cancellationToken);
-            return result.IsSuccessfullyComplete;
+            return result?.IsSuccessfullyComplete ?? false;
         }
 
         public async Task<AuthenticateResponse> AuthenticateUsernamePasswordAsync(string username, string password, CancellationToken cancellationToken = default(CancellationToken))
         {
+            if (this.Connection == null)
+                throw new InvalidOperationException("Cannot send AUTHINFO command when there is no connection to the server");
+
             await this.Connection.SendAsync(cancellationToken, $"AUTHINFO USER {username}\r\n");
             var responseUser = await this.Connection.ReceiveAsync();
 
@@ -142,6 +148,9 @@
             if (password != null && password.IndexOf('\0') > -1)
                 throw new ArgumentException("A NUL character is not permitted", nameof(password));
 
+            if (this.Connection == null)
+                throw new InvalidOperationException("Cannot send AUTHINFO command when there is no connection to the server");
+
             var message = $"{authzid}\0{username}\0{password}";
             var enc = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(message));
             await this.Connection.SendAsync(cancellationToken, $"AUTHINFO SASL PLAIN {enc}\r\n");
@@ -164,6 +173,9 @@
 
         public async Task<ReadOnlyCollection<string>> GetCapabilitiesAsync(CancellationToken cancellationToken = default(CancellationToken))
         {
+            if (this.Connection == null)
+                throw new InvalidOperationException("Cannot send CAPABILITIES command when there is no connection to the server");
+
             await this.Connection.SendAsync(cancellationToken, "CAPABILITIES\r\n");
             var response = await this.Connection.ReceiveMultilineAsync();
             if (response.Code != 101)
@@ -175,6 +187,9 @@
 
         public async Task<ReadOnlyCollection<string>> GetNewsgroupsListAsync(CancellationToken cancellationToken = default(CancellationToken))
         {
+            if (this.Connection == null)
+                throw new InvalidOperationException("Cannot send LIST command when there is no connection to the server");
+
             await this.Connection.SendAsync(cancellationToken, "LIST\r\n");
             var response = await this.Connection.ReceiveMultilineAsync();
             if (response.Code != 215)
@@ -190,6 +205,9 @@
             if (string.IsNullOrWhiteSpace(newsgroup))
                 throw new ArgumentNullException(nameof(newsgroup));
 
+            if (this.Connection == null)
+                throw new InvalidOperationException("Cannot send GROUP command when there is no connection to the server");
+
             await this.Connection.SendAsync(cancellationToken, "GROUP {0}\r\n", newsgroup);
             var response = await this.Connection.ReceiveAsync();
             if (response.Code != 211)
@@ -197,10 +215,10 @@
 
             CurrentNewsgroup = newsgroup;
 
-            var values = response.Message.Split(separators);
+            var values = response.Message?.Split(separators);
 
-            if (!int.TryParse(values[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out int number))
-                throw new InvalidOperationException($"Cannot parse {values[0]} to an integer for 'number'");
+            if (values == null || !int.TryParse(values[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out int number))
+                throw new InvalidOperationException($"Cannot parse {values?[0]} to an integer for 'number'");
 
             if (!int.TryParse(values[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out int low))
                 throw new InvalidOperationException($"Cannot parse {values[1]} to an integer for 'low'");
@@ -215,6 +233,9 @@
         {
             if (string.IsNullOrWhiteSpace(newsgroup))
                 throw new ArgumentNullException(nameof(newsgroup));
+
+            if (this.Connection == null)
+                throw new InvalidOperationException("Cannot send LISTGROUP command when there is no connection to the server");
 
             var rangeArgument = "1-";
             if (articleNumberRangeStart != null)
@@ -234,10 +255,10 @@
 
             CurrentNewsgroup = newsgroup;
 
-            var values = response.Message.Split(separators);
+            var values = response.Message?.Split(separators);
 
-            if (!int.TryParse(values[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out int number))
-                throw new InvalidOperationException($"Cannot parse {values[0]} to an integer for 'number'");
+            if (values == null || !int.TryParse(values[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out int number))
+                throw new InvalidOperationException($"Cannot parse {values?[0]} to an integer for 'number'");
 
             if (!int.TryParse(values[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out int low))
                 throw new InvalidOperationException($"Cannot parse {values[1]} to an integer for 'low'");
@@ -263,6 +284,9 @@
             if (this.Capabilities != null && !this.Capabilities.Any(c => string.Compare(c, "MODE-READER", StringComparison.OrdinalIgnoreCase) == 0))
                 throw new InvalidOperationException("Server does not support MODE-READER capability");
 
+            if (this.Connection == null)
+                throw new InvalidOperationException("Cannot send MODE READER command when there is no connection to the server");
+
             await this.Connection.SendAsync(cancellationToken, $"MODE READER\r\n");
             var response = await this.Connection.ReceiveAsync();
             ModeReaderIssued = true;
@@ -271,15 +295,18 @@
 
         public async Task<PointerResponse> LastAsync(CancellationToken cancellationToken = default(CancellationToken))
         {
+            if (this.Connection == null)
+                throw new InvalidOperationException("Cannot send LAST command when there is no connection to the server");
+
             await this.Connection.SendAsync(cancellationToken, $"LAST\r\n");
             var response = await this.Connection.ReceiveAsync();
             switch (response.Code)
             {
                 case 223: // Article found
-                    var values = response.Message.Split(separators);
+                    var values = response.Message?.Split(separators);
 
-                    if (!int.TryParse(values[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out int number))
-                        throw new InvalidOperationException($"Cannot parse {values[0]} to an integer for 'number'");
+                    if (values == null || !int.TryParse(values[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out int number))
+                        throw new InvalidOperationException($"Cannot parse {values?[0]} to an integer for 'number'");
 
                     return new PointerResponse(response.Code, response.Message, number, values[1]);
                 case 412: // No newsgroup selected
@@ -296,15 +323,18 @@
 
         public async Task<PointerResponse> NextAsync(CancellationToken cancellationToken = default(CancellationToken))
         {
+            if (this.Connection == null)
+                throw new InvalidOperationException("Cannot send NEXT command when there is no connection to the server");
+
             await this.Connection.SendAsync(cancellationToken, $"NEXT\r\n");
             var response = await this.Connection.ReceiveAsync();
             switch (response.Code)
             {
                 case 223: // Article found
-                    var values = response.Message.Split(separators);
+                    var values = response.Message?.Split(separators);
 
-                    if (!int.TryParse(values[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out int number))
-                        throw new InvalidOperationException($"Cannot parse {values[0]} to an integer for 'number'");
+                    if (values == null || !int.TryParse(values[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out int number))
+                        throw new InvalidOperationException($"Cannot parse {values?[0]} to an integer for 'number'");
 
                     return new PointerResponse(response.Code, response.Message, number, values[1]);
                 case 412: // No newsgroup selected
@@ -321,6 +351,9 @@
 
         public async Task<ArticleResponse> ArticleAsync(int articleNumber, CancellationToken cancellationToken = default(CancellationToken))
         {
+            if (this.Connection == null)
+                throw new InvalidOperationException("Cannot send ARTICLE command when there is no connection to the server");
+
             await this.Connection.SendAsync(cancellationToken, $"ARTICLE {articleNumber}\r\n");
             var response = await this.Connection.ReceiveMultilineAsync();
 
@@ -342,15 +375,18 @@
 
         public async Task<ArticleResponse> ArticleAsync(string messageId, CancellationToken cancellationToken = default(CancellationToken))
         {
+            if (this.Connection == null)
+                throw new InvalidOperationException("Cannot send ARTICLE command when there is no connection to the server");
+
             await this.Connection.SendAsync(cancellationToken, $"ARTICLE {messageId}\r\n");
             var response = await this.Connection.ReceiveMultilineAsync();
 
             switch (response.Code)
             {
                 case 220: // Article follows (multi-line)
-                    var values = response.Message.Split(separators);
-                    if (!int.TryParse(values[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out int number))
-                        throw new InvalidOperationException($"Cannot parse {values[0]} to an integer for 'number'");
+                    var values = response.Message?.Split(separators);
+                    if (values == null || !int.TryParse(values[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out int number))
+                        throw new InvalidOperationException($"Cannot parse {values?[0]} to an integer for 'number'");
 
                     if (number > 0)
                         CurrentArticleNumber = number;
@@ -364,6 +400,9 @@
 
         public async Task<ArticleResponse> ArticleAsync(CancellationToken cancellationToken = default(CancellationToken))
         {
+            if (this.Connection == null)
+                throw new InvalidOperationException("Cannot send ARTICLE command when there is no connection to the server");
+
             // This form uses the server's notion of the "current" article number
             await this.Connection.SendAsync(cancellationToken, $"ARTICLE\r\n");
             var response = await this.Connection.ReceiveMultilineAsync();
@@ -371,9 +410,9 @@
             switch (response.Code)
             {
                 case 220: // Article follows (multi-line)
-                    var values = response.Message.Split(separators);
-                    if (!int.TryParse(values[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out int number))
-                        throw new InvalidOperationException($"Cannot parse {values[0]} to an integer for 'number'");
+                    var values = response.Message?.Split(separators);
+                    if (values == null || !int.TryParse(values[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out int number))
+                        throw new InvalidOperationException($"Cannot parse {values?[0]} to an integer for 'number'");
 
                     CurrentArticleNumber = number;
                     return new ArticleResponse(response.Code, response.Message, response.Lines);
@@ -391,6 +430,9 @@
 
         public async Task<HeadResponse> HeadAsync(int articleNumber, CancellationToken cancellationToken = default(CancellationToken))
         {
+            if (this.Connection == null)
+                throw new InvalidOperationException("Cannot send HEAD command when there is no connection to the server");
+
             await this.Connection.SendAsync(cancellationToken, $"HEAD {articleNumber}\r\n");
             var response = await this.Connection.ReceiveMultilineAsync();
 
@@ -412,15 +454,18 @@
 
         public async Task<HeadResponse> HeadAsync(string messageId, CancellationToken cancellationToken = default(CancellationToken))
         {
+            if (this.Connection == null)
+                throw new InvalidOperationException("Cannot send HEAD command when there is no connection to the server");
+
             await this.Connection.SendAsync(cancellationToken, $"HEAD {messageId}\r\n");
             var response = await this.Connection.ReceiveMultilineAsync();
 
             switch (response.Code)
             {
                 case 221: // Headers follow (multi-line)
-                    var values = response.Message.Split(separators);
-                    if (!int.TryParse(values[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out int number))
-                        throw new InvalidOperationException($"Cannot parse {values[0]} to an integer for 'number'");
+                    var values = response.Message?.Split(separators);
+                    if (values == null || !int.TryParse(values[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out int number))
+                        throw new InvalidOperationException($"Cannot parse {values?[0]} to an integer for 'number'");
 
                     if (number > 0)
                         CurrentArticleNumber = number;
@@ -434,6 +479,9 @@
 
         public async Task<HeadResponse> HeadAsync(CancellationToken cancellationToken = default(CancellationToken))
         {
+            if (this.Connection == null)
+                throw new InvalidOperationException("Cannot send HEAD command when there is no connection to the server");
+
             // This form uses the server's notion of the "current" article number
             await this.Connection.SendAsync(cancellationToken, $"HEAD\r\n");
             var response = await this.Connection.ReceiveMultilineAsync();
@@ -441,9 +489,9 @@
             switch (response.Code)
             {
                 case 221: // Headers follow (multi-line)
-                    var values = response.Message.Split(separators);
-                    if (!int.TryParse(values[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out int number))
-                        throw new InvalidOperationException($"Cannot parse {values[0]} to an integer for 'number'");
+                    var values = response.Message?.Split(separators);
+                    if (values == null || !int.TryParse(values[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out int number))
+                        throw new InvalidOperationException($"Cannot parse {values?[0]} to an integer for 'number'");
 
                     CurrentArticleNumber = number;
                     return new HeadResponse(response.Code, response.Message, response.Lines);
@@ -461,6 +509,9 @@
 
         public async Task<BodyResponse> BodyAsync(int articleNumber, CancellationToken cancellationToken = default(CancellationToken))
         {
+            if (this.Connection == null)
+                throw new InvalidOperationException("Cannot send BODY command when there is no connection to the server");
+
             await this.Connection.SendAsync(cancellationToken, $"BODY {articleNumber}\r\n");
             var response = await this.Connection.ReceiveMultilineAsync();
 
@@ -482,15 +533,18 @@
 
         public async Task<BodyResponse> BodyAsync(string messageId, CancellationToken cancellationToken = default(CancellationToken))
         {
+            if (this.Connection == null)
+                throw new InvalidOperationException("Cannot send BODY command when there is no connection to the server");
+
             await this.Connection.SendAsync(cancellationToken, $"BODY {messageId}\r\n");
             var response = await this.Connection.ReceiveMultilineAsync();
 
             switch (response.Code)
             {
                 case 222: // Body follows (multi-line)
-                    var values = response.Message.Split(separators);
-                    if (!int.TryParse(values[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out int number))
-                        throw new InvalidOperationException($"Cannot parse {values[0]} to an integer for 'number'");
+                    var values = response.Message?.Split(separators);
+                    if (values == null || !int.TryParse(values[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out int number))
+                        throw new InvalidOperationException($"Cannot parse {values?[0]} to an integer for 'number'");
 
                     if (number > 0)
                         CurrentArticleNumber = number;
@@ -504,6 +558,9 @@
 
         public async Task<BodyResponse> BodyAsync(CancellationToken cancellationToken = default(CancellationToken))
         {
+            if (this.Connection == null)
+                throw new InvalidOperationException("Cannot send BODY command when there is no connection to the server");
+
             // This form uses the server's notion of the "current" article number
             await this.Connection.SendAsync(cancellationToken, $"BODY\r\n");
             var response = await this.Connection.ReceiveMultilineAsync();
@@ -511,9 +568,9 @@
             switch (response.Code)
             {
                 case 222: // Body follows (multi-line)
-                    var values = response.Message.Split(separators);
-                    if (!int.TryParse(values[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out int number))
-                        throw new InvalidOperationException($"Cannot parse {values[0]} to an integer for 'number'");
+                    var values = response.Message?.Split(separators);
+                    if (values == null || !int.TryParse(values[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out int number))
+                        throw new InvalidOperationException($"Cannot parse {values?[0]} to an integer for 'number'");
 
                     CurrentArticleNumber = number;
                     return new BodyResponse(response.Code, response.Message, response.Lines);
@@ -531,15 +588,18 @@
 
         public async Task<PointerResponse> StatAsync(int articleNumber, CancellationToken cancellationToken = default(CancellationToken))
         {
+            if (this.Connection == null)
+                throw new InvalidOperationException("Cannot send STAT command when there is no connection to the server");
+
             await this.Connection.SendAsync(cancellationToken, $"STAT {articleNumber}\r\n");
             var response = await this.Connection.ReceiveAsync();
 
             switch (response.Code)
             {
                 case 223: // Article exists
-                    var values = response.Message.Split(separators);
+                    var values = response.Message?.Split(separators);
                     CurrentArticleNumber = articleNumber;
-                    return new PointerResponse(response.Code, response.Message, articleNumber, values[1]);
+                    return new PointerResponse(response.Code, response.Message, articleNumber, values?[1]);
                 case 423: // No article with that number
                     CurrentArticleNumber = null;
                     return new PointerResponse(response.Code, response.Message, null, null);
@@ -553,15 +613,18 @@
 
         public async Task<PointerResponse> StatAsync(string messageId, CancellationToken cancellationToken = default(CancellationToken))
         {
+            if (this.Connection == null)
+                throw new InvalidOperationException("Cannot send STAT command when there is no connection to the server");
+
             await this.Connection.SendAsync(cancellationToken, $"STAT {messageId}\r\n");
             var response = await this.Connection.ReceiveAsync();
 
             switch (response.Code)
             {
                 case 223: // Article exists
-                    var values = response.Message.Split(separators);
-                    if (!int.TryParse(values[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out int number))
-                        throw new InvalidOperationException($"Cannot parse {values[0]} to an integer for 'number'");
+                    var values = response.Message?.Split(separators);
+                    if (values == null || !int.TryParse(values[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out int number))
+                        throw new InvalidOperationException($"Cannot parse {values?[0]} to an integer for 'number'");
 
                     if (number > 0)
                         CurrentArticleNumber = number;
@@ -575,6 +638,9 @@
 
         public async Task<PointerResponse> StatAsync(CancellationToken cancellationToken = default(CancellationToken))
         {
+            if (this.Connection == null)
+                throw new InvalidOperationException("Cannot send STAT command when there is no connection to the server");
+
             // This form uses the server's notion of the "current" article number
             await this.Connection.SendAsync(cancellationToken, $"STAT\r\n");
             var response = await this.Connection.ReceiveAsync();
@@ -582,9 +648,9 @@
             switch (response.Code)
             {
                 case 223: // Article exists
-                    var values = response.Message.Split(separators);
-                    if (!int.TryParse(values[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out int number))
-                        throw new InvalidOperationException($"Cannot parse {values[0]} to an integer for 'number'");
+                    var values = response.Message?.Split(separators);
+                    if (values == null || !int.TryParse(values[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out int number))
+                        throw new InvalidOperationException($"Cannot parse {values?[0]} to an integer for 'number'");
 
                     CurrentArticleNumber = number;
                     return new PointerResponse(response.Code, response.Message, number, values[1]);
@@ -602,7 +668,19 @@
 
         public async Task<ReadOnlyCollection<OverResponse>> OverAsync(int low, int high, CancellationToken cancellationToken = default(CancellationToken))
         {
-            await this.Connection.SendAsync(cancellationToken, $"OVER {low}-{high}\r\n");
+            if (this.Connection == null)
+                throw new InvalidOperationException("Cannot send OVER command when there is no connection to the server");
+
+            string verb;
+
+            if (this.Capabilities == null || this.Capabilities.Any(c => string.Compare(c, "OVER", StringComparison.OrdinalIgnoreCase) == 0))
+                verb = "OVER";
+            else if (this.Capabilities != null && this.Capabilities.Any(c => string.Compare(c, "XOVER", StringComparison.OrdinalIgnoreCase) == 0))
+                verb = "XOVER";
+            else
+                throw new InvalidOperationException("Server does not support OVER or XOVER capability");
+
+            await this.Connection.SendAsync(cancellationToken, $"{verb} {low}-{high}\r\n");
             var response = await this.Connection.ReceiveMultilineAsync();
             if (response.Code != 224)
                 throw new NntpException(string.Format("Unexpected response code {0}.  Message: {1}", response.Code, response.Message));
@@ -611,18 +689,9 @@
 
             foreach (var line in response.Lines)
             {
-                var parts = line.Split('\t');
-                ret.Add(new OverResponse(response.Code, response.Message)
-                {
-                    ArticleNumber = int.Parse(parts[0]),
-                    Subject = parts[1],
-                    From = parts[2],
-                    Date = parts[3],
-                    MessageID = parts[4],
-                    References = parts[5],
-                    Bytes = int.Parse(parts[6]),
-                    Lines = int.Parse(parts[7]),
-                });
+                var over = OverResponse.Parse(response.Code, response.Message, line);
+                if (over != null)
+                    ret.Add(over);
             }
 
             return new ReadOnlyCollection<OverResponse>(ret);
@@ -630,6 +699,9 @@
 
         public async Task PostAsync(string newsgroup, string subject, string from, string content, CancellationToken cancellationToken = default(CancellationToken))
         {
+            if (this.Connection == null)
+                throw new InvalidOperationException("Cannot send POST command when there is no connection to the server");
+
             await this.Connection.SendAsync(cancellationToken, "POST\r\n");
             var response = await this.Connection.ReceiveAsync();
             if (response.Code != 340)
@@ -643,6 +715,9 @@
 
         public async Task<DateResponse> DateAsync(CancellationToken cancellationToken = default(CancellationToken))
         {
+            if (this.Connection == null)
+                throw new InvalidOperationException("Cannot send DATE command when there is no connection to the server");
+
             await this.Connection.SendAsync(cancellationToken, "DATE\r\n");
             var response = await this.Connection.ReceiveAsync();
 
@@ -661,6 +736,9 @@
             var date = since.ToUniversalTime().ToString("yyyyMMdd");
             var time = since.ToUniversalTime().ToString("HHmmss");
 
+            if (this.Connection == null)
+                throw new InvalidOperationException("Cannot send NEWGROUPS command when there is no connection to the server");
+
             await this.Connection.SendAsync(cancellationToken, $"NEWGROUPS {date} {time} GMT\r\n");
             var response = await this.Connection.ReceiveMultilineAsync();
 
@@ -678,14 +756,20 @@
             var date = since.ToUniversalTime().ToString("yyyyMMdd");
             var time = since.ToUniversalTime().ToString("HHmmss");
 
+            if (this.Connection == null)
+                throw new InvalidOperationException("Cannot send NEWNEWS command when there is no connection to the server");
+
             await this.Connection.SendAsync(cancellationToken, $"NEWNEWS {wildmat} {date} {time} GMT\r\n");
             var response = await this.Connection.ReceiveMultilineAsync();
 
             return new NewNewsResponse(response.Code, response.Message, response.Lines);
         }
 
-        public async Task<GroupsListResponse> ListAsync(string keyword = "ACTIVE", string wildmatOrArgument = null, CancellationToken cancellationToken = default(CancellationToken))
+        public async Task<GroupsListResponse> ListAsync(string keyword = "ACTIVE", string? wildmatOrArgument = null, CancellationToken cancellationToken = default(CancellationToken))
         {
+            if (this.Connection == null)
+                throw new InvalidOperationException("Cannot send LIST command when there is no connection to the server");
+
             await this.Connection.SendAsync(cancellationToken, $"LIST {keyword}{(string.IsNullOrWhiteSpace(wildmatOrArgument) ? string.Empty : $" {wildmatOrArgument}")}\r\n");
             var response = await this.Connection.ReceiveMultilineAsync();
 
@@ -727,8 +811,11 @@
 
         public async Task<GroupsListTimesResponse> ListActiveTimesAsync(CancellationToken cancellationToken = default(CancellationToken)) => await ListActiveTimesAsync(null, cancellationToken);
 
-        public async Task<GroupsListTimesResponse> ListActiveTimesAsync(string wildmatOrArgument, CancellationToken cancellationToken = default(CancellationToken))
+        public async Task<GroupsListTimesResponse> ListActiveTimesAsync(string? wildmatOrArgument, CancellationToken cancellationToken = default(CancellationToken))
         {
+            if (this.Connection == null)
+                throw new InvalidOperationException("Cannot send LIST ACTIVE.TIMES command when there is no connection to the server");
+
             await this.Connection.SendAsync(cancellationToken, $"LIST ACTIVE.TIMES{(string.IsNullOrWhiteSpace(wildmatOrArgument) ? string.Empty : $" {wildmatOrArgument}")}\r\n");
             var response = await this.Connection.ReceiveMultilineAsync();
 
@@ -736,13 +823,13 @@
             {
                 case 215: // Information follows (multi-line)
 
-                    var values = response.Message.Split(separators);
+                    var values = response.Message?.Split(separators);
 
                     var groups = new List<GroupsListTimesResponse.GroupTimeEntry>();
                     foreach (var line in response.Lines)
                     {
-                        if (!int.TryParse(values[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out int seconds))
-                            throw new InvalidOperationException($"Cannot parse {values[1]} to an integer for 'seconds'");
+                        if (values == null || !int.TryParse(values[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out int seconds))
+                            throw new InvalidOperationException($"Cannot parse {values?[1]} to an integer for 'seconds'");
 
                         groups.Add(new GroupsListTimesResponse.GroupTimeEntry
                         {
@@ -760,6 +847,9 @@
 
         public async Task<NewsgroupsListResponse> ListNewsgroupsAsync(CancellationToken cancellationToken = default(CancellationToken))
         {
+            if (this.Connection == null)
+                throw new InvalidOperationException("Cannot send LIST NEWSGROUPS command when there is no connection to the server");
+
             await this.Connection.SendAsync(cancellationToken, $"LIST NEWSGROUPS\r\n");
             var response = await this.Connection.ReceiveMultilineAsync();
 

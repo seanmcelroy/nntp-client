@@ -6,7 +6,7 @@ namespace mcnntp.common
         {
         }
 
-        public AuthenticateResponse(int code, string message) : base(code, message)
+        public AuthenticateResponse(int code, string? message) : base(code, message)
         {
         }
     }

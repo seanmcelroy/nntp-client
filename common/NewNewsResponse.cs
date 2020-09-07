@@ -8,9 +8,9 @@ namespace mcnntp.common
     {
         public ReadOnlyCollection<string> MessageIds { get; private set; }
 
-        public NewNewsResponse(int code, string message, ReadOnlyCollection<string> messageIds) : base(code, message)
+        public NewNewsResponse(int code, string? message, ReadOnlyCollection<string>? messageIds) : base(code, message)
         {
-            this.MessageIds = messageIds;
+            this.MessageIds = messageIds ?? new ReadOnlyCollection<string>(new string[0]);
         }
 
         public NewNewsResponse(int code, string message, IEnumerable<string> messageIds) : base(code, message)

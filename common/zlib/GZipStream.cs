@@ -141,7 +141,7 @@ namespace Ionic.Zlib
         ///   (<c>Nothing</c> in VB).
         /// </para>
         /// </remarks>
-        public String Comment
+        public string? Comment
         {
             get
             {
@@ -177,7 +177,7 @@ namespace Ionic.Zlib
         ///   in VB).
         /// </para>
         /// </remarks>
-        public String FileName
+        public string? FileName
         {
             get { return _FileName; }
             set
@@ -223,8 +223,8 @@ namespace Ionic.Zlib
         internal ZlibBaseStream _baseStream;
         bool _disposed;
         bool _firstReadDone;
-        string _FileName;
-        string _Comment;
+        string? _FileName;
+        string? _Comment;
         int _Crc32;
 
 
@@ -594,7 +594,7 @@ namespace Ionic.Zlib
         {
             get
             {
-                return this._baseStream._z.TotalBytesIn;
+                return this._baseStream._z?.TotalBytesIn ?? 0;
             }
         }
 
@@ -603,7 +603,7 @@ namespace Ionic.Zlib
         {
             get
             {
-                return this._baseStream._z.TotalBytesOut;
+                return this._baseStream._z?.TotalBytesOut ?? 0;
             }
         }
 
@@ -666,7 +666,7 @@ namespace Ionic.Zlib
             get
             {
                 if (_disposed) throw new ObjectDisposedException("GZipStream");
-                return _baseStream._stream.CanRead;
+                return _baseStream._stream?.CanRead ?? false;
             }
         }
 
@@ -693,7 +693,7 @@ namespace Ionic.Zlib
             get
             {
                 if (_disposed) throw new ObjectDisposedException("GZipStream");
-                return _baseStream._stream.CanWrite;
+                return _baseStream._stream?.CanWrite ?? false;
             }
         }
 
@@ -730,9 +730,9 @@ namespace Ionic.Zlib
             get
             {
                 if (this._baseStream._streamMode == Ionic.Zlib.ZlibBaseStream.StreamMode.Writer)
-                    return this._baseStream._z.TotalBytesOut + _headerByteCount;
+                    return (this._baseStream._z?.TotalBytesOut ?? 0) + _headerByteCount;
                 if (this._baseStream._streamMode == Ionic.Zlib.ZlibBaseStream.StreamMode.Reader)
-                    return this._baseStream._z.TotalBytesIn + this._baseStream._gzipHeaderByteCount;
+                    return (this._baseStream._z?.TotalBytesIn ?? 0) + this._baseStream._gzipHeaderByteCount;
                 return 0;
             }
 
@@ -863,11 +863,11 @@ namespace Ionic.Zlib
 
         private int EmitHeader()
         {
-            byte[] commentBytes = (Comment == null) ? null : iso8859dash1.GetBytes(Comment);
-            byte[] filenameBytes = (FileName == null) ? null : iso8859dash1.GetBytes(FileName);
+            byte[]? commentBytes = (Comment == null) ? null : iso8859dash1.GetBytes(Comment);
+            byte[]? filenameBytes = (FileName == null) ? null : iso8859dash1.GetBytes(FileName);
 
-            int cbLength = (Comment == null) ? 0 : commentBytes.Length + 1;
-            int fnLength = (FileName == null) ? 0 : filenameBytes.Length + 1;
+            int cbLength = (Comment == null) ? 0 : (commentBytes?.Length ?? 0) + 1;
+            int fnLength = (FileName == null) ? 0 : (filenameBytes?.Length ?? 0) + 1;
 
             int bufferLength = 10 + cbLength + fnLength;
             byte[] header = new byte[bufferLength];
@@ -919,7 +919,7 @@ namespace Ionic.Zlib
                 header[i++] = 0; // terminate
             }
 
-            _baseStream._stream.Write(header, 0, header.Length);
+            _baseStream._stream!.Write(header, 0, header.Length);
 
             return header.Length; // bytes written
         }

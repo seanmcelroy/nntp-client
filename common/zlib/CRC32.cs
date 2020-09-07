@@ -82,7 +82,7 @@ namespace Ionic.Crc
         /// <param name="input">The stream over which to calculate the CRC32</param>
         /// <param name="output">The stream into which to deflate the input</param>
         /// <returns>the CRC32 calculation</returns>
-        public Int32 GetCrc32AndCopy(System.IO.Stream input, System.IO.Stream output)
+        public Int32 GetCrc32AndCopy(System.IO.Stream input, System.IO.Stream? output)
         {
             if (input == null)
                 throw new Exception("The input stream must not be null.");
@@ -108,25 +108,6 @@ namespace Ionic.Crc
             }
         }
 
-
-        /// <summary>
-        ///   Get the CRC32 for the given (word,byte) combo.  This is a
-        ///   computation defined by PKzip for PKZIP 2.0 (weak) encryption.
-        /// </summary>
-        /// <param name="W">The word to start with.</param>
-        /// <param name="B">The byte to combine it with.</param>
-        /// <returns>The CRC-ized result.</returns>
-        public Int32 ComputeCrc32(Int32 W, byte B)
-        {
-            return _InternalComputeCrc32((UInt32)W, B);
-        }
-
-        internal Int32 _InternalComputeCrc32(UInt32 W, byte B)
-        {
-            return (Int32)(crc32Table[(W ^ B) & 0xFF] ^ (W >> 8));
-        }
-
-
         /// <summary>
         /// Update the value for the running CRC32 using the given block of bytes.
         /// This is useful when using the CRC32() class in a Stream.
@@ -147,12 +128,12 @@ namespace Ionic.Crc
                 if (this.reverseBits)
                 {
                     UInt32 temp = (_register >> 24) ^ b;
-                    _register = (_register << 8) ^ crc32Table[temp];
+                    _register = (_register << 8) ^ crc32Table![temp];
                 }
                 else
                 {
                     UInt32 temp = (_register & 0x000000FF) ^ b;
-                    _register = (_register >> 8) ^ crc32Table[temp];
+                    _register = (_register >> 8) ^ crc32Table![temp];
                 }
             }
             _TotalBytesRead += count;
@@ -168,12 +149,12 @@ namespace Ionic.Crc
             if (this.reverseBits)
             {
                 UInt32 temp = (_register >> 24) ^ b;
-                _register = (_register << 8) ^ crc32Table[temp];
+                _register = (_register << 8) ^ crc32Table![temp];
             }
             else
             {
                 UInt32 temp = (_register & 0x000000FF) ^ b;
-                _register = (_register >> 8) ^ crc32Table[temp];
+                _register = (_register >> 8) ^ crc32Table![temp];
             }
         }
 
@@ -198,14 +179,14 @@ namespace Ionic.Crc
                 if (this.reverseBits)
                 {
                     uint temp = (_register >> 24) ^ b;
-                    _register = (_register << 8) ^ crc32Table[(temp >= 0)
+                    _register = (_register << 8) ^ crc32Table![(temp >= 0)
                                                               ? temp
                                                               : (temp + 256)];
                 }
                 else
                 {
                     UInt32 temp = (_register & 0x000000FF) ^ b;
-                    _register = (_register >> 8) ^ crc32Table[(temp >= 0)
+                    _register = (_register >> 8) ^ crc32Table![(temp >= 0)
                                                               ? temp
                                                               : (temp + 256)];
 
@@ -272,34 +253,18 @@ namespace Ionic.Crc
                         crc32Table[i] = dwCrc;
                     }
                     i++;
-                } while (i!=0);
+                } while (i != 0);
             }
-
-#if VERBOSE
-            Console.WriteLine();
-            Console.WriteLine("private static readonly UInt32[] crc32Table = {");
-            for (int i = 0; i < crc32Table.Length; i+=4)
-            {
-                Console.Write("   ");
-                for (int j=0; j < 4; j++)
-                {
-                    Console.Write(" 0x{0:X8}U,", crc32Table[i+j]);
-                }
-                Console.WriteLine();
-            }
-            Console.WriteLine("};");
-            Console.WriteLine();
-#endif
         }
 
 
         private uint gf2_matrix_times(uint[] matrix, uint vec)
         {
             uint sum = 0;
-            int i=0;
+            int i = 0;
             while (vec != 0)
             {
-                if ((vec & 0x01)== 0x01)
+                if ((vec & 0x01) == 0x01)
                     sum ^= matrix[i];
                 vec >>= 1;
                 i++;
@@ -334,8 +299,8 @@ namespace Ionic.Crc
             if (length == 0)
                 return;
 
-            uint crc1= ~_register;
-            uint crc2= (uint) crc;
+            uint crc1 = ~_register;
+            uint crc2 = (uint)crc;
 
             // put operator for one zero bit in odd
             odd[0] = this.dwPolynomial;  // the CRC-32 polynomial
@@ -352,15 +317,16 @@ namespace Ionic.Crc
             // put operator for four zero bits in odd
             gf2_matrix_square(odd, even);
 
-            uint len2 = (uint) length;
+            uint len2 = (uint)length;
 
             // apply len2 zeros to crc1 (first square will put the operator for one
             // zero byte, eight zero bits, in even)
-            do {
+            do
+            {
                 // apply zeros operator for this bit of len2
                 gf2_matrix_square(even, odd);
 
-                if ((len2 & 1)== 1)
+                if ((len2 & 1) == 1)
                     crc1 = gf2_matrix_times(even, crc1);
                 len2 >>= 1;
 
@@ -369,7 +335,7 @@ namespace Ionic.Crc
 
                 // another iteration of the loop with odd and even swapped
                 gf2_matrix_square(odd, even);
-                if ((len2 & 1)==1)
+                if ((len2 & 1) == 1)
                     crc1 = gf2_matrix_times(odd, crc1);
                 len2 >>= 1;
 
@@ -378,7 +344,7 @@ namespace Ionic.Crc
 
             crc1 ^= crc2;
 
-            _register= ~crc1;
+            _register = ~crc1;
 
             //return (int) crc1;
             return;
@@ -410,7 +376,7 @@ namespace Ionic.Crc
         ///   </para>
         /// </remarks>
         public CRC32(bool reverseBits) :
-            this( unchecked((int)0xEDB88320), reverseBits)
+            this(unchecked((int)0xEDB88320), reverseBits)
         {
         }
 
@@ -443,7 +409,7 @@ namespace Ionic.Crc
         public CRC32(int polynomial, bool reverseBits)
         {
             this.reverseBits = reverseBits;
-            this.dwPolynomial = (uint) polynomial;
+            this.dwPolynomial = (uint)polynomial;
             this.GenerateLookupTable();
         }
 
@@ -465,7 +431,7 @@ namespace Ionic.Crc
         private UInt32 dwPolynomial;
         private Int64 _TotalBytesRead;
         private bool reverseBits;
-        private UInt32[] crc32Table;
+        private UInt32[]? crc32Table;
         private const int BUFFER_SIZE = 8192;
         private UInt32 _register = 0xFFFFFFFFU;
     }
@@ -609,7 +575,7 @@ namespace Ionic.Crc
         // explicit param, otherwise we don't validate, because it could be our special
         // value.
         private CrcCalculatorStream
-            (bool leaveOpen, Int64 length, System.IO.Stream stream, CRC32 crc32)
+            (bool leaveOpen, Int64 length, System.IO.Stream stream, CRC32? crc32)
             : base()
         {
             _innerStream = stream;
@@ -802,7 +768,6 @@ namespace Ionic.Crc
             if (!_leaveOpen)
                 _innerStream.Close();
         }
-
     }
 
 }
