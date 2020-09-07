@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Linq;
 using System.Threading;
+using mcnntp.common;
 using mcnntp.common.client;
 
 namespace mcnntp.client
@@ -129,7 +130,10 @@ namespace mcnntp.client
             }
 
             var quitResponse = client.DisconnectAsync().Result;
-            Console.Out.WriteLine($"Closed connection: {quitResponse}");
+            if (quitResponse == null)
+                Console.Out.WriteLine($"Connection is already closed");
+            else
+                Console.Out.WriteLine($"Closed connection: {quitResponse}");
         }
     }
 }

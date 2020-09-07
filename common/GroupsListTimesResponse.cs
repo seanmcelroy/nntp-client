@@ -13,9 +13,9 @@ namespace mcnntp.common
 
         public ReadOnlyCollection<GroupTimeEntry> Groups { get; private set; }
 
-        public GroupsListTimesResponse(int code, string message, ReadOnlyCollection<GroupTimeEntry> groups) : base(code, message)
+        public GroupsListTimesResponse(int code, string? message, ReadOnlyCollection<GroupTimeEntry>? groups) : base(code, message)
         {
-            this.Groups = groups;
+            this.Groups = groups ?? new ReadOnlyCollection<GroupTimeEntry>(new GroupTimeEntry[0]);
         }
     }
 }

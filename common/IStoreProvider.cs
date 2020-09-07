@@ -45,7 +45,7 @@ namespace mcnntp.common
         /// <param name="identity">The identity of the user making the request</param>
         /// <param name="parentCatalogName">The parent catalog.  When specified, this finds catalogs that are contained in this specified parent catalog</param>
         /// <returns>An enumeration of catalogs available to an end-user at the root level in the store</returns>
-        IEnumerable<ICatalog> GetGlobalCatalogs(IIdentity identity, string parentCatalogName = null);
+        IEnumerable<ICatalog> GetGlobalCatalogs(IIdentity identity, string? parentCatalogName = null);
 
         /// <summary>
         /// Retrieves an enumeration of personal catalogs available to an end-user at the root level in the store
@@ -53,7 +53,7 @@ namespace mcnntp.common
         /// <param name="identity">The identity of the user making the request</param>
         /// <param name="parentCatalogName">The parent catalog.  When specified, this finds catalogs that are contained in this specified parent catalog</param>
         /// <returns>An enumeration of catalogs available to an end-user at the root level in the store</returns>
-        IEnumerable<ICatalog> GetPersonalCatalogs(IIdentity identity, string parentCatalogName = null);
+        IEnumerable<ICatalog> GetPersonalCatalogs(IIdentity identity, string? parentCatalogName = null);
 
         /// <summary>
         /// Creates a personal catalog

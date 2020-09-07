@@ -65,7 +65,7 @@
 
 
 using System;
-using Interop=System.Runtime.InteropServices;
+using Interop = System.Runtime.InteropServices;
 
 namespace Ionic.Zlib
 {
@@ -84,7 +84,7 @@ namespace Ionic.Zlib
         /// <summary>
         /// The buffer from which data is taken.
         /// </summary>
-        public byte[] InputBuffer;
+        public byte[]? InputBuffer;
 
         /// <summary>
         /// An index into the InputBuffer array, indicating where to start reading. 
@@ -108,7 +108,7 @@ namespace Ionic.Zlib
         /// <summary>
         /// Buffer to store output data.
         /// </summary>
-        public byte[] OutputBuffer;
+        public byte[]? OutputBuffer;
 
         /// <summary>
         /// An index into the OutputBuffer array, indicating where to start writing. 
@@ -132,10 +132,10 @@ namespace Ionic.Zlib
         /// <summary>
         /// used for diagnostics, when something goes wrong!
         /// </summary>
-        public System.String Message;
+        public string? Message;
 
-        internal DeflateManager dstate;
-        internal InflateManager istate;
+        internal DeflateManager? dstate;
+        internal InflateManager? istate;
 
         internal uint _Adler32;
 
@@ -252,7 +252,7 @@ namespace Ionic.Zlib
         /// <returns>Z_OK if all goes well.</returns>
         public int InitializeInflate(int windowBits)
         {
-            this.WindowBits = windowBits;            
+            this.WindowBits = windowBits;
             return InitializeInflate(windowBits, true);
         }
 
@@ -653,28 +653,30 @@ namespace Ionic.Zlib
         // (See also read_buf()).
         internal void flush_pending()
         {
-            int len = dstate.pendingCount;
+            int len = dstate?.pendingCount ?? 0;
 
             if (len > AvailableBytesOut)
                 len = AvailableBytesOut;
             if (len == 0)
                 return;
 
-            if (dstate.pending.Length <= dstate.nextPending ||
-                OutputBuffer.Length <= NextOut ||
+            if (dstate == null ||
+                dstate.pending == null ||
+                dstate.pending.Length <= dstate.nextPending ||
+                (OutputBuffer?.Length ?? 0) <= NextOut ||
                 dstate.pending.Length < (dstate.nextPending + len) ||
-                OutputBuffer.Length < (NextOut + len))
+                (OutputBuffer?.Length ?? 0) < (NextOut + len))
             {
-                throw new ZlibException(String.Format("Invalid State. (pending.Length={0}, pendingCount={1})",
-                    dstate.pending.Length, dstate.pendingCount));
+                throw new ZlibException(string.Format("Invalid State. (pending.Length={0}, pendingCount={1})",
+                    dstate?.pending?.Length ?? -1, dstate?.pendingCount));
             }
 
             Array.Copy(dstate.pending, dstate.nextPending, OutputBuffer, NextOut, len);
 
-            NextOut             += len;
-            dstate.nextPending  += len;
-            TotalBytesOut       += len;
-            AvailableBytesOut   -= len;
+            NextOut += len;
+            dstate.nextPending += len;
+            TotalBytesOut += len;
+            AvailableBytesOut -= len;
             dstate.pendingCount -= len;
             if (dstate.pendingCount == 0)
             {
@@ -698,7 +700,7 @@ namespace Ionic.Zlib
 
             AvailableBytesIn -= len;
 
-            if (dstate.WantRfc1950HeaderBytes)
+            if (dstate?.WantRfc1950HeaderBytes ?? false)
             {
                 _Adler32 = Adler.Adler32(_Adler32, InputBuffer, NextIn, len);
             }
