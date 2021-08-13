@@ -1,10 +1,11 @@
 nntp-client
 ======
 
-A .NET Core implementation of the NNTP protocol that can be used to create an
-NNTP newsgroup reader client.  This repository features a classlib which can
-be referenced, and a small example console application that demonstrates
-its ability to connect to an NNTP server and operate as a client.
+A .NET Core compatible implementation of the NNTP protocol that can be used
+to create an NNTP newsgroup reader client.  This repository features a
+classlib which can be referenced, and a small example console application
+that demonstrates its ability to connect to an NNTP server and operate as a
+client.
 
 This client project grew out of NNTP-related interests in the McNNTP
 repository.

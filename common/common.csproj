@@ -3,14 +3,28 @@
   <PropertyGroup>
     <TargetFramework>netstandard2.0</TargetFramework>
     <Nullable>enable</Nullable>
+   <LangVersion>8.0</LangVersion>
+        <PackageId>nntp-client</PackageId>
+    <Version>1.0.1</Version>
+    <Owners>seanmcelroy</Owners>
+    <Authors>Sean McElroy</Authors>
+    <Title>nntp-client: Library for interacting with Usenet newsgroups</Title>
+    <Description>
+      A .NET Core compatible implementatio of the NNTP protocol that can be used to create an NNTP
+      newsgroup reader client. This repository features a classlib which can be referenced, and a
+      small example console application that demonstrates its ability to connect to an NTTP server
+      and operate as a client.
+    </Description>
+    <PackageReleaseNotes>Bumping log4net dependency version to address security vulnerability in log4net</PackageReleaseNotes>
+    <Copyright>Copyright 2021 Sean McElroy</Copyright>
+    <PackageLicenseExpression>MS-PL</PackageLicenseExpression>
+    <PackageTags>NNTP Usenet newsgroup</PackageTags>
+    <RepositoryUrl>https://github.com/seanmcelroy/nntp-client</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="log4net" Version="2.0.10" />
   </ItemGroup>
-
-  <PropertyGroup>
-   <LangVersion>8.0</LangVersion>
-  </PropertyGroup>
-
 </Project>
