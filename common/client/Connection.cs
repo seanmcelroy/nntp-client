@@ -29,7 +29,7 @@ namespace mcnntp.common.client
     /// <summary>
     /// A connection from a server to a client
     /// </summary>
-    internal class Connection
+    internal class Connection : IDisposable
     {
         /// <summary>
         /// The logging utility instance to use to log events from this class
@@ -72,6 +72,11 @@ namespace mcnntp.common.client
         private readonly int localPort;
 
         /// <summary>
+        /// Indicates whether this connection has been disposed
+        /// </summary>
+        private bool disposed = false;
+
+        /// <summary>
         /// Initializes a new instance of the <see cref="Connection"/> class.
         /// </summary>
         /// <param name="client">The <see cref="TcpClient"/> that created this connection</param>
@@ -80,17 +85,17 @@ namespace mcnntp.common.client
           TcpClient client,
           Stream stream)
         {
-            this.client = client;
+            this.client = client ?? throw new ArgumentNullException(nameof(client));
             this.client.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.KeepAlive, true);
-            this.stream = stream;
-            this.reader = new NntpStreamReader(stream);
+            this.stream = stream ?? throw new ArgumentNullException(nameof(stream));
+            reader = new NntpStreamReader(stream);
 
-            var remoteIpEndpoint = (IPEndPoint)this.client.Client.RemoteEndPoint;
-            this.remoteAddress = remoteIpEndpoint.Address;
-            this.remotePort = remoteIpEndpoint.Port;
-            var localIpEndpoint = (IPEndPoint)this.client.Client.LocalEndPoint;
-            this.localAddress = localIpEndpoint.Address;
-            this.localPort = localIpEndpoint.Port;
+            var remoteIpEndpoint = (IPEndPoint?)this.client.Client.RemoteEndPoint;
+            remoteAddress = remoteIpEndpoint.Address;
+            remotePort = remoteIpEndpoint.Port;
+            var localIpEndpoint = (IPEndPoint?)this.client.Client.LocalEndPoint;
+            localAddress = localIpEndpoint.Address;
+            localPort = localIpEndpoint.Port;
         }
 
         /// <summary>
@@ -120,7 +125,7 @@ namespace mcnntp.common.client
         {
             get
             {
-                return this.stream is SslStream;
+                return stream is SslStream;
             }
         }
 
@@ -147,7 +152,7 @@ namespace mcnntp.common.client
         /// </summary>
         public IPAddress RemoteAddress
         {
-            get { return this.remoteAddress; }
+            get { return remoteAddress; }
         }
 
         /// <summary>
@@ -155,7 +160,7 @@ namespace mcnntp.common.client
         /// </summary>
         public int RemotePort
         {
-            get { return this.remotePort; }
+            get { return remotePort; }
         }
 
         /// <summary>
@@ -163,7 +168,7 @@ namespace mcnntp.common.client
         /// </summary>
         public IPAddress LocalAddress
         {
-            get { return this.localAddress; }
+            get { return localAddress; }
         }
 
         /// <summary>
@@ -171,7 +176,7 @@ namespace mcnntp.common.client
         /// </summary>
         public int LocalPort
         {
-            get { return this.localPort; }
+            get { return localPort; }
         }
         #endregion
 
@@ -185,24 +190,20 @@ namespace mcnntp.common.client
         /// <exception cref="NntpException">Thrown when the message comes back incomplete or malformed</exception>
         /// <exception cref="InvalidOperationException">Thrown when an attempt is made to receive a response from the server, but the connection is not connected to a server</exception>
         /// <exception cref="ObjectDisposedException">Thrown when an attempt to read data from the connection is made when the underlying stream is already disposed or closed</exception>
-        internal async Task<NntpResponse> ReceiveAsync(bool multiLine = false)
+        internal async Task<INntpResponse> ReceiveAsync(bool multiLine = false, CancellationToken cancellationToken = default)
         {
-            if (!this.client.Connected)
+            if (!client.Connected)
                 throw new InvalidOperationException("The connection is not currently connected to a server");
 
-            var line = await this.reader.ReadLineAsync();
-            if (line == null)
-                throw new NntpException("Did not receive response from server.");
-
-            int code;
-            if (line.Length < 5 || !int.TryParse(line.Substring(0, 3), out code))
+            var line = await reader.ReadLineAsync(cancellationToken) ?? throw new NntpException("Did not receive response from server.");
+            if (line.Length < 5 || !int.TryParse(line.AsSpan(0, 3), out int code))
                 throw new NntpException("Received invalid response from server.");
 
-            var message = line.Substring(4);
+            var message = line[4..];
 
             return multiLine
-                ? new NntpMultilineResponse(code, message, new ReadOnlyCollection<string>(this.reader.ReadAllLines().ToList()))
-                : new NntpResponse(code, message);
+                ? new NntpMultilineResponse(code, message, new ReadOnlyCollection<string>(reader.ReadAllLines().ToList()))
+                : new NntpOneLineResponse(code, message, line);
         }
 
         /// <summary>
@@ -213,14 +214,14 @@ namespace mcnntp.common.client
         /// <exception cref="NntpException">Thrown when the message comes back incomplete or malformed</exception>
         /// <exception cref="InvalidOperationException">Thrown when an attempt is made to receive a response from the server, but the connection is not connected to a server</exception>
         /// <exception cref="ObjectDisposedException">Thrown when an attempt to read data from the connection is made when the underlying stream is already disposed or closed</exception>
-        internal async Task<NntpMultilineResponse> ReceiveMultilineAsync() => (NntpMultilineResponse)(await this.ReceiveAsync(true));
+        internal async Task<NntpMultilineResponse> ReceiveMultilineAsync() => (NntpMultilineResponse)await ReceiveAsync(true);
 
         /// <summary>
         /// Sends the formatted data to the client
         /// </summary>
         /// <param name="data">The formatted data to send</param>
         /// <returns>A value indicating whether or not the transmission was successful</returns>
-        internal Task<bool> SendAsync(CancellationToken cts, string data) => this.SendInternalAsync(data, false, cts);
+        internal Task<bool> SendAsync(CancellationToken cts, string data) => SendInternalAsync(data, false, cts);
 
         /// <summary>
         /// Sends the formatted data to the client
@@ -228,7 +229,7 @@ namespace mcnntp.common.client
         /// <param name="format">The data, or format string for data, to send to the client</param>
         /// <param name="args">The argument applied as a format string to <paramref name="format"/> to create the data to send to the client</param>
         /// <returns>A value indicating whether or not the transmission was successful</returns>
-        internal Task<bool> SendAsync(CancellationToken cts, string format, params object[] args) => this.SendInternalAsync(string.Format(CultureInfo.InvariantCulture, format, args), false, cts);
+        internal Task<bool> SendAsync(CancellationToken cts, string format, params object[] args) => SendInternalAsync(string.Format(CultureInfo.InvariantCulture, format, args), false, cts);
 
         /// <summary>
         /// Sends the formatted data to the client
@@ -236,36 +237,36 @@ namespace mcnntp.common.client
         /// <param name="format">The data, or format string for data, to send to the client</param>
         /// <param name="args">The argument applied as a format string to <paramref name="format"/> to create the data to send to the client</param>
         /// <returns>A value indicating whether or not the transmission was successful</returns>
-        private Task<bool> SendCompressed(CancellationToken cts, string format, params object[] args) => this.SendInternalAsync(string.Format(CultureInfo.InvariantCulture, format, args), true, cts);
+        private Task<bool> SendCompressed(CancellationToken cts, string format, params object[] args) => SendInternalAsync(string.Format(CultureInfo.InvariantCulture, format, args), true, cts);
 
         private async Task<bool> SendInternalAsync(string data, bool compressedIfPossible, CancellationToken cancellationToken = default(CancellationToken))
         {
             // Convert the string data to byte data using ASCII encoding.
             byte[] byteData;
-            if (compressedIfPossible && this.Compression && this.CompressionGZip && this.CompressionTerminator)
-                byteData = await data.GZipCompressAsync(cancellationToken);
+            if (compressedIfPossible && Compression && CompressionGZip && CompressionTerminator)
+                byteData = await data.ZlibDeflate(cancellationToken);
             else
                 byteData = Encoding.UTF8.GetBytes(data);
 
             try
             {
                 // Begin sending the data to the remote device.
-                await this.stream.WriteAsync(byteData, 0, byteData.Length, cancellationToken);
-                if (this.ShowBytes && this.ShowData)
+                await stream.WriteAsync(byteData, cancellationToken);
+                if (ShowBytes && ShowData)
                     Logger.TraceFormat(
-                        "{0}:{1} <{2}{3} {4} bytes: {5}", this.RemoteAddress, this.RemotePort, this.TLS ? "!" : "<",
-                        compressedIfPossible && this.CompressionGZip ? "G" : "<",
+                        "{0}:{1} <{2}{3} {4} bytes: {5}", RemoteAddress, RemotePort, TLS ? "!" : "<",
+                        compressedIfPossible && CompressionGZip ? "G" : "<",
                         byteData.Length,
                         data.TrimEnd('\r', '\n'));
-                else if (this.ShowBytes)
+                else if (ShowBytes)
                     Logger.TraceFormat(
-                        "{0}:{1} <{2}{3} {4} bytes", this.RemoteAddress, this.RemotePort, this.TLS ? "!" : "<",
-                        compressedIfPossible && this.CompressionGZip ? "G" : "<",
+                        "{0}:{1} <{2}{3} {4} bytes", RemoteAddress, RemotePort, TLS ? "!" : "<",
+                        compressedIfPossible && CompressionGZip ? "G" : "<",
                         byteData.Length);
-                else if (this.ShowData)
+                else if (ShowData)
                     Logger.TraceFormat(
-                        "{0}:{1} <{2}{3} {4}", this.RemoteAddress, this.RemotePort, this.TLS ? "!" : "<",
-                        compressedIfPossible && this.CompressionGZip ? "G" : "<",
+                        "{0}:{1} <{2}{3} {4}", RemoteAddress, RemotePort, TLS ? "!" : "<",
+                        compressedIfPossible && CompressionGZip ? "G" : "<",
                         data.TrimEnd('\r', '\n'));
 
                 return true;
@@ -273,29 +274,29 @@ namespace mcnntp.common.client
             catch (IOException)
             {
                 // Don't send 403 - the sending socket isn't working.
-                Logger.VerboseFormat("{0}:{1} XXX CONNECTION TERMINATED", this.RemoteAddress, this.RemotePort);
+                Logger.VerboseFormat("{0}:{1} XXX CONNECTION TERMINATED", RemoteAddress, RemotePort);
                 return false;
             }
             catch (SocketException)
             {
                 // Don't send 403 - the sending socket isn't working.
-                Logger.VerboseFormat("{0}:{1} XXX CONNECTION TERMINATED", this.RemoteAddress, this.RemotePort);
+                Logger.VerboseFormat("{0}:{1} XXX CONNECTION TERMINATED", RemoteAddress, RemotePort);
                 return false;
             }
             catch (ObjectDisposedException)
             {
-                Logger.VerboseFormat("{0}:{1} XXX CONNECTION TERMINATED", this.RemoteAddress, this.RemotePort);
+                Logger.VerboseFormat("{0}:{1} XXX CONNECTION TERMINATED", RemoteAddress, RemotePort);
                 return false;
             }
         }
 
-        public async Task ShutdownAsync(CancellationToken cancellationToken = default(CancellationToken))
+        public async Task ShutdownAsync(CancellationToken cancellationToken = default)
         {
-            if (this.client.Connected)
+            if (client.Connected)
             {
-                await this.SendAsync(cancellationToken, "205 closing connection\r\n");
-                this.client.Client.Shutdown(SocketShutdown.Both);
-                this.client.Close();
+                await SendAsync(cancellationToken, $"{NntpResponseCodes.ClosingConnection} closing connection\r\n");
+                client.Client.Shutdown(SocketShutdown.Both);
+                client.Close();
             }
 
             //this.server.RemoveConnection(this);
@@ -303,10 +304,44 @@ namespace mcnntp.common.client
 
         public void Close()
         {
-            if (this.client.Connected)
+            if (client?.Connected == true)
             {
-                this.client.Client.Shutdown(SocketShutdown.Both);
-                this.client.Close();
+                try
+                {
+                    client.Client.Shutdown(SocketShutdown.Both);
+                }
+                catch (ObjectDisposedException) { } // Already closed
+                catch (SocketException) { } // Connection issues
+            }
+            
+            client?.Close();
+            stream?.Dispose();
+            reader?.Dispose();
+        }
+
+        /// <summary>
+        /// Disposes the connection and releases all resources
+        /// </summary>
+        public void Dispose()
+        {
+            Dispose(true);
+            GC.SuppressFinalize(this);
+        }
+
+        /// <summary>
+        /// Disposes the connection and releases resources
+        /// </summary>
+        /// <param name="disposing">True if disposing managed resources</param>
+        protected virtual void Dispose(bool disposing)
+        {
+            if (!disposed)
+            {
+                if (disposing)
+                {
+                    // Dispose managed resources
+                    Close();
+                }
+                disposed = true;
             }
         }
         #endregion

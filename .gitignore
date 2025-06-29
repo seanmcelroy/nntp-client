@@ -5,6 +5,11 @@ project.lock.json
 *.pyc
 nupkg/
 
+# Other WIP
+CL*.md
+PLANNED.md
+tests/
+
 # Visual Studio Code
 .vscode
 

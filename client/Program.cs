@@ -1,29 +1,26 @@
-﻿using System;
-using System.Linq;
-using System.Threading;
+﻿using mcnntp.common.client;
 using mcnntp.common;
-using mcnntp.common.client;
 
 namespace mcnntp.client
 {
     class Program
     {
-        static void Main(string[] args)
+        static async Task Main(string[] args)
         {
             var host = args.Length > 0 ? args[0] : "news.fysh.org";
-            Console.WriteLine("Hello World!");
+            Console.WriteLine("Example Console Integration Test Runner");
 
             var cts = new CancellationTokenSource();
 
-            var client = new NntpClient();
+            await using var client = new NntpClient();
             try
             {
                 Console.WriteLine($"Connecting to {host}...");
-                var connectTask = client.ConnectAsync(host).Result;
-                if (connectTask.IsCommandError || connectTask.IsServerError)
+                var connectResponse = await client.ConnectAsync(host);
+                if (connectResponse.IsError())
                 {
                     // Following a 400 or 502 response, the server MUST immediately close the connection.
-                    var quitAbortiveResult = client.DisconnectAsync().Result;
+                    var quitAbortiveResult = await client.DisconnectAsync();
                     Console.Out.WriteLine($"Closed connection: {quitAbortiveResult}");
                     return;
                 }
@@ -31,27 +28,35 @@ namespace mcnntp.client
 
                 Console.WriteLine($"\r\nRetrieving server capabilities");
                 var caps = client.GetCapabilitiesAsync(cts.Token).Result;
-                foreach (var cap in caps)
-                    Console.WriteLine($"\t{cap}");
+                if (caps is CapabilitiesResponse cr)
+                {
+                    foreach (var cap in cr.Capabilities)
+                        Console.WriteLine($"\t{cap}");
+                }
 
                 var sasl = client.AuthenticateSaslPlainAsync("john", "doe", cts.Token).Result;
 
                 var date = client.DateAsync(cts.Token).Result;
-                Console.WriteLine($"Server date: {date.DateTime}");
+                Console.WriteLine($"Server date: {date.ServerDateTime}");
 
-                var newsgroups = client.GetNewsgroupsListAsync(cts.Token).Result;
-                Console.WriteLine($"\r\nGroups count={newsgroups.Count}");
-                foreach (var ng in newsgroups)
+                var listResponse = client.GetNewsgroupsListAsync(cts.Token).Result;
+                if (listResponse is not ListActiveResponse lar)
+                {
+                    await Console.Error.WriteLineAsync("Failed to get LIST of newsgroups from server.");
+                    return;
+                }
+                Console.WriteLine($"\r\nGroups count={lar.Groups.Count}");
+                foreach (var ng in lar.Groups)
                     Console.WriteLine($"\t{ng}");
 
                 Console.WriteLine($"\r\nRetrieving news...");
-                foreach (var ng in newsgroups)
+                foreach (var ng in lar.Groups)
                 {
-                    Console.WriteLine($"\tGroup summary for {ng}");
-                    var group = client.GetGroupAsync(ng, cts.Token).Result;
+                    Console.WriteLine($"\tGroup summary for {ng.Group}");
+                    var group = client.GetGroupAsync(ng.Group, cts.Token).Result;
                     Console.WriteLine($"\t\tEstimated article count: {group.EstimatedArticleCount}");
-                    Console.WriteLine($"\t\tLow watermark: {group.LowWatermark}");
-                    Console.WriteLine($"\t\tHigh watermark: {group.HighWatermark}");
+                    Console.WriteLine($"\t\tLow watermark: {ng.LowWatermark}");
+                    Console.WriteLine($"\t\tHigh watermark: {ng.HighWatermark}");
 
                     if (group.HighWatermark == group.LowWatermark - 1)
                     {
@@ -59,7 +64,7 @@ namespace mcnntp.client
                     }
                     else
                     {
-                        var groupList = client.GetGroupListAsync(ng, null, null, cts.Token).Result;
+                        var groupList = client.GetGroupListAsync(ng.Group, null, null, cts.Token).Result;
                         Console.WriteLine($"\t\tLISTGROUP also called low {groupList.LowWatermark}~={group.LowWatermark}");
 
                         Console.WriteLine($"\tNews for {ng}");
@@ -74,6 +79,8 @@ namespace mcnntp.client
                             var headers = articleByNumber.GetHeaders();
 
                             var messageId = articleByNumber.GetHeaderValues("Message-ID").FirstOrDefault();
+                            if (string.IsNullOrWhiteSpace(messageId))
+                                continue;
 
                             var articleByMessageId = client.ArticleAsync(messageId, cts.Token).Result;
                             Console.WriteLine($"\t\t\t\t({articleByMessageId.Code}) ARTICLE: {articleByNumber.Lines.Take(5).Aggregate((c, n) => c + "\r\n\t\t\t" + n)}");

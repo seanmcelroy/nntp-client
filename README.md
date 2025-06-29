@@ -1,17 +1,16 @@
 nntp-client
 ======
 
-A .NET Core compatible implementation of the NNTP protocol that can be used
-to create an NNTP newsgroup reader client.  This repository features a
-classlib which can be referenced, and a small example console application
-that demonstrates its ability to connect to an NNTP server and operate as a
-client.
+A .NET Core implementation of the NNTP protocol that can be used to create an NNTP newsgroup reader client.  This repository features a classlib which can be referenced, and a small example console application that demonstrates its ability to connect to an NNTP server and operate as a client.
 
-This client project grew out of NNTP-related interests in the McNNTP
-repository.
+This client project grew out of NNTP-related interests in the McNNTP repository.
 
-To keep this library purely a .NET Core offering, I have copied some of the
-DotNetZip library files for Zlib into this project.  For this reason, this
-project is licensed under MS-PL.
+To keep this library purely a .NET Core offering, I have copied some of the DotNetZip library files for Zlib into this project.  For this reason, this project is licensed under MS-PL.
 
 Pull requests or questions are welcome!
+
+# Project Structure
+
+1. The ./client subdirectory contains a simple console client that can test functionality in the terminal.
+2. The ./common subdirectory contains the actual client library implementation that can be used by incorporating projects.
+3. The ./docs subdirectory contains RFC specifications this library attempts to adhere to and implement, as applicable.

@@ -1,9 +1,6 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Text;
-using System.Threading.Tasks;
 
 namespace mcnntp.common.core
 {
@@ -79,13 +76,14 @@ namespace mcnntp.common.core
         /// <returns>Each line of a multi-line response.  Single-line respones yield only a single result.</returns>
         public IEnumerable<string> ReadAllLines()
         {
-            string readLine;
-            while ((readLine = this.ReadLine()) != null)
+            string? readLine;
+            while ((readLine = ReadLine()) != null)
             {
                 if (readLine == ".") break;
 
-                if (readLine.StartsWith(".."))
-                    readLine = readLine.Substring(1);
+                // RFC 3977 Section 3.1.1: Un-stuff any line beginning with a dot
+                if (readLine.StartsWith('.') && readLine.Length > 1)
+                    readLine = readLine[1..];
 
                 yield return readLine;
             }

@@ -3,32 +3,45 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 
-namespace mcnntp.common
+namespace mcnntp.common;
+
+public readonly record struct HeadResponse : INntpResponse
 {
-    public class HeadResponse : NntpResponse
+    public readonly int Code { get; private init; }
+    public readonly string? Message { get; private init; }
+    public readonly ReadOnlyCollection<string> Lines { get; private init; }
+
+    public HeadResponse(int code, string? message, ReadOnlyCollection<string>? lines)
     {
-        public ReadOnlyCollection<string> Lines { get; private set; }
-
-        public HeadResponse(int code, string? message, ReadOnlyCollection<string>? lines) : base(code, message)
-        {
-            this.Lines = lines ?? new ReadOnlyCollection<string>(new string[0]);
-        }
-
-        public HeadResponse(int code, string? message, IEnumerable<string>? lines) : base(code, message)
-        {
-            this.Lines = new ReadOnlyCollection<string>(lines?.ToArray() ?? new string[0]);
-        }
-
-        public IEnumerable<KeyValuePair<string, string>> GetHeaders() => StringUtility.GetHeaders(this.Lines);
-
-        public IEnumerable<string> GetHeaderValues(string headerName)
-        {
-            if (this.Lines == null)
-                throw new InvalidOperationException("No lines are part of this response");
-
-            foreach (var kvp in GetHeaders())
-                if (string.Compare(kvp.Key, headerName, StringComparison.OrdinalIgnoreCase) == 0)
-                    yield return kvp.Value;
-        }
+        Code = code;
+        // RFC 3977 3.1.1. Apart from those line endings, the stream MUST NOT
+        // include the octets NUL, LF, or CR.
+        Message = message?.Replace("\0", "").Replace("\r", "").Replace("\n", "");
+        Lines = lines ?? new ReadOnlyCollection<string>(Array.Empty<string>());
     }
+
+    public HeadResponse(int code, string? message, IEnumerable<string>? lines)
+    {
+        Code = code;
+        // RFC 3977 3.1.1. Apart from those line endings, the stream MUST NOT
+        // include the octets NUL, LF, or CR.
+        Message = message?.Replace("\0", "").Replace("\r", "").Replace("\n", "");
+        Lines = new ReadOnlyCollection<string>(lines?.ToArray() ?? []);
+    }
+
+    public IEnumerable<KeyValuePair<string, string>> GetHeaders() => StringUtility.GetHeaders(Lines);
+
+    public IEnumerable<string> GetHeaderValues(string headerName)
+    {
+        ArgumentNullException.ThrowIfNull(headerName);
+
+        if (Lines == null)
+            throw new InvalidOperationException("No lines are part of this response");
+
+        foreach (var kvp in GetHeaders())
+            if (string.Equals(kvp.Key, headerName, StringComparison.OrdinalIgnoreCase))
+                yield return kvp.Value;
+    }
+
+    public override string ToString() => $"{Code} {Message}";
 }
